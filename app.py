@@ -42,6 +42,39 @@ def set_lang(lang):
         session["lang"] = lang
     return redirect(request.referrer or url_for('index'))
 
+# Raw dataset values -> translation keys, for fields displayed as free text
+# (not already run through a select/option list, which templates translate
+# inline). Without these, the table/detail screens showed the CSV's raw
+# Uzbek codes ("iste'mol", "xususiy", "M"...) even in Russian mode.
+PURPOSE_KEYS = {"ipoteka": "f.purpose.mortgage", "avto": "f.purpose.auto",
+                "iste'mol": "f.purpose.consum", "kredit_karta": "f.purpose.card"}
+OUTCOME_KEYS = {"toladi": "outcome.toladi", "defolt": "outcome.defolt"}
+GENDER_KEYS = {"M": "f.gender.m", "F": "f.gender.f"}
+EMPLOYMENT_KEYS = {"xususiy": "f.employment.priv", "byudjet": "f.employment.gov",
+                    "IT": "f.employment.it", "savdo": "f.employment.trade",
+                    "qurilish": "f.employment.construct", "transport": "f.employment.trans",
+                    "o'z_ishi": "f.employment.self", "ishsiz": "f.employment.unemp"}
+EDUCATION_KEYS = {"oliy": "f.edu.higher", "orta": "f.edu.mid"}
+
+
+def tr_lookup(mapping, raw, lang, default="—"):
+    """Translate a raw dataset value via `mapping`; falls through to the raw
+    value itself (not `default`) if it's simply not one of the known codes,
+    so unexpected data doesn't get hidden -- `default` only covers None/empty.
+    Test-split rows have a real NaN (not None/"") in `natija`; pd.isna()
+    catches that -- `raw == ""` alone lets it through, since NaN != NaN and
+    NaN == "" are both False, and Jinja then renders it as the literal
+    string "nan"."""
+    if raw is None or raw == "" or pd.isna(raw):
+        return default
+    key = mapping.get(raw)
+    if key:
+        return translate(key, lang)
+    if raw == "orta_maxsus":  # composite: same convention used in the <select> options
+        return f"{translate('f.edu.mid', lang)} {translate('f.edu.special', lang)}"
+    return raw
+
+
 # Загрузка данных и модели при старте
 _df = None
 _engine = None
@@ -77,6 +110,7 @@ def index():
 
     approved_count = int((scores >= SCORE_THRESHOLD).sum())
     rejected_count = int((scores < SCORE_THRESHOLD).sum())
+    lang = session.get('lang', 'ru')
 
     bins = np.arange(0, 1050, 50)
     hist, _ = np.histogram(scores, bins=bins)
@@ -92,7 +126,6 @@ def index():
         # Находим наименьший вклад (наиболее негативный) по каждой заявке
         points = -(engine.model.coef_[0] * X_rej)
         worst_features_idx = np.argmin(points, axis=1)
-        lang = session.get('lang', 'ru')
         reason_series = pd.Series(worst_features_idx).map({i: translate(f"feat.{f}", lang) for i, f in enumerate(FEATURE_COLUMNS)})
         reason_counts = reason_series.value_counts().head(5)
         reasons_labels = reason_counts.index.tolist()
@@ -102,7 +135,10 @@ def index():
         reasons_data = []
 
     chart_data = {
-        "approval": {"labels": ["Одобрено", "Отказано"], "data": [approved_count, rejected_count]},
+        "approval": {
+            "labels": [translate("uw.stat.appr", lang), translate("uw.stat.rej", lang)],
+            "data": [approved_count, rejected_count],
+        },
         "scores": {"labels": score_labels, "data": score_data},
         "reasons": {"labels": reasons_labels, "data": reasons_data}
     }
@@ -246,8 +282,11 @@ def underwriter():
     end = start + per_page
     page_data = df_scored.iloc[start:end]
 
+    lang = session.get('lang', 'ru')
+
     applications = []
     for _, row in page_data.iterrows():
+        natija_raw = row.get("natija")
         applications.append({
             "application_id": row["application_id"],
             "applicant_id": row["applicant_id"],
@@ -255,9 +294,10 @@ def underwriter():
             "score": int(row["score"]),
             "pd": round(row["pd_predicted"], 4),
             "decision": row["decision_predicted"],
-            "actual": row.get("natija", "—"),
+            "actual": tr_lookup(OUTCOME_KEYS, natija_raw, lang),
+            "actual_raw": natija_raw if natija_raw in OUTCOME_KEYS else "unknown",
             "amount": f"{row['sorlgan_summa']:,.0f}",
-            "purpose": row.get("maqsad", "—"),
+            "purpose": tr_lookup(PURPOSE_KEYS, row.get("maqsad"), lang),
             "income": f"{row.get('deklaratsiya_daromad', 0):,.0f}",
             "dti": round(row.get("dti", 0), 2),
         })
@@ -303,7 +343,7 @@ def application_detail(app_id):
 
     row = df[df["application_id"] == app_id]
     if row.empty:
-        return "Заявка не найдена", 404
+        return translate("app.not_found", session.get('lang', 'ru')), 404
 
     row = row.iloc[0]
     features = {f: row[f] for f in FEATURE_COLUMNS}
@@ -345,22 +385,24 @@ def application_detail(app_id):
         }
 
     # Дополнительные данные заявки
+    natija_raw = row.get("natija")
     app_info = {
         "application_id": row["application_id"],
         "applicant_id": row["applicant_id"],
         "ism": row.get("ism", "N/A"),
         "yosh": row.get("yosh", "N/A"),
-        "jins": row.get("jins", "N/A"),
+        "jins": tr_lookup(GENDER_KEYS, row.get("jins"), lang, default="N/A"),
         "viloyat": row.get("viloyat", "N/A"),
-        "bandlik": row.get("bandlik", "N/A"),
-        "talim": row.get("talim", "N/A"),
+        "bandlik": tr_lookup(EMPLOYMENT_KEYS, row.get("bandlik"), lang, default="N/A"),
+        "talim": tr_lookup(EDUCATION_KEYS, row.get("talim"), lang, default="N/A"),
         "ish_staji_oy": row.get("ish_staji_oy", 0),
         "deklaratsiya_daromad": f"{row.get('deklaratsiya_daromad', 0):,.0f}",
         "oila_azolari": row.get("oila_azolari", 0),
         "sorlgan_summa": f"{row.get('sorlgan_summa', 0):,.0f}",
-        "maqsad": row.get("maqsad", "N/A"),
+        "maqsad": tr_lookup(PURPOSE_KEYS, row.get("maqsad"), lang, default="N/A"),
         "muddat_oy": row.get("muddat_oy", 0),
-        "actual": row.get("natija", "—"),
+        "actual": tr_lookup(OUTCOME_KEYS, natija_raw, lang),
+        "actual_raw": natija_raw if natija_raw in OUTCOME_KEYS else "unknown",
         "median_income": f"{row.get('median_income', 0):,.0f}",
         "income_cv": round(row.get("income_cv", 0), 4),
         "dti": round(row.get("dti", 0), 4),

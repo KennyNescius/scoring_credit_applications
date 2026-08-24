@@ -12,7 +12,7 @@ import pytest
 import numpy as np
 import db as db_module
 from data_loader import build_feature_dataset, FEATURE_COLUMNS, aggregate_monthly_flows, aggregate_existing_loans
-from scoring_engine import CreditScoringEngine, SCORE_THRESHOLD
+from scoring_engine import CreditScoringEngine, SCORE_THRESHOLD, MAX_PTI_FOR_LIMIT_SEARCH
 
 
 @pytest.fixture(scope="module")
@@ -152,6 +152,27 @@ class TestScoringEngine:
         features["deklaratsiya_daromad"] = row.get("deklaratsiya_daromad", 3000000)
         limit = engine.find_max_limit(features)
         assert limit >= 0, "Лимит >= 0"
+
+    def test_find_max_limit_never_exceeds_affordability_cap(self, engine):
+        # Reproduces the profile the user found: enough "good" unrelated
+        # factors (private-sector, short term, clean history) let the score
+        # alone approve a limit whose payment exceeded the applicant's
+        # entire monthly income (PTI > 100%). find_max_limit() now enforces
+        # a hard PTI ceiling on top of the score for exactly this reason.
+        features = {
+            "yosh": 30, "ish_staji_oy": 24, "oila_azolari": 3,
+            "bandlik_encoded": "xususiy", "talim_encoded": "oliy",
+            "maqsad_encoded": "iste'mol", "muddat_oy": 12,
+            "median_income": 3000000, "income_cv": 0.15, "max_delinquency": 0,
+            "dti": 0.0, "pti": 0.0, "summa_daromad_ratio": 0.0,
+            "deklaratsiya_daromad": 3000000,
+        }
+        limit = engine.find_max_limit(features)
+        implied_payment = limit / features["muddat_oy"]
+        implied_pti = implied_payment / features["median_income"]
+        assert implied_pti <= MAX_PTI_FOR_LIMIT_SEARCH + 1e-6, (
+            f"limit={limit} implies PTI={implied_pti:.3f}, over the {MAX_PTI_FOR_LIMIT_SEARCH} cap"
+        )
 
 
 class TestResultsFile:

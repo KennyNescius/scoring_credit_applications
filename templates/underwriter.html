@@ -84,8 +84,8 @@
                     </span>
                 </td>
                 <td>
-                    {% if app.actual != '—' and app.actual is not none %}
-                    <span class="actual-badge {{ app.actual }}">{{ app.actual }}</span>
+                    {% if app.actual != '—' %}
+                    <span class="actual-badge {{ app.actual_raw }}">{{ app.actual }}</span>
                     {% else %}
                     <span class="actual-badge unknown">—</span>
                     {% endif %}

@@ -227,10 +227,10 @@ function renderResult(r) {
 
     document.getElementById('wi-score-bar').style.width = Math.min(r.score / 10, 100) + '%';
     document.getElementById('wi-threshold-mark').style.left = (r.threshold / 10) + '%';
-    document.getElementById('wi-threshold-label').textContent = '{{ t('index.cards.threshold') }} ' + r.threshold;
+    document.getElementById('wi-threshold-label').textContent = {{ t('index.cards.threshold')|tojson }} + ' ' + r.threshold;
 
     document.getElementById('wi-pd').textContent = (r.pd * 100).toFixed(2) + '%';
-    document.getElementById('wi-limit').textContent = formatNumber(r.max_limit) + ' {{ t('det.sum') }}';
+    document.getElementById('wi-limit').textContent = formatNumber(r.max_limit) + ' ' + {{ t('det.sum')|tojson }};
     document.getElementById('wi-reason').textContent = r.reason;
 
     const factorsEl = document.getElementById('wi-factors');

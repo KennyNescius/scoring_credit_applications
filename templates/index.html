@@ -141,7 +141,7 @@
         data: {
             labels: rawData.scores.labels,
             datasets: [{
-                label: '{{ t("index.charts.scores_label") }}',
+                label: {{ t("index.charts.scores_label")|tojson }},
                 data: rawData.scores.data,
                 backgroundColor: '#D97757',
                 borderRadius: 4
@@ -166,7 +166,7 @@
         data: {
             labels: rawData.reasons.labels.map(l => l.length > 20 ? l.substring(0,20)+'...' : l),
             datasets: [{
-                label: '{{ t("index.charts.reason_label") }}',
+                label: {{ t("index.charts.reason_label")|tojson }},
                 data: rawData.reasons.data,
                 backgroundColor: '#575550',
                 borderRadius: 4

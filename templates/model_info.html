@@ -54,6 +54,15 @@
         </div>
     </div>
 
+    <div class="info-card" id="model-affordability">
+        <h3>{{ t('model.affordability.title') }}</h3>
+        <p class="card-description">{{ t('model.affordability.desc') }}</p>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.affordability.cap') }}</span>
+            <span class="info-value" style="font-weight: 600; color: var(--accent-orange)">{{ (info.max_pti_for_limit_search * 100)|round(0)|int }}%</span>
+        </div>
+    </div>
+
     <div class="info-card" id="model-coefficients" style="max-height: 500px; overflow-y: auto;">
         <h3>{{ t('model.all_coefs') }} ({{ info.n_features }})</h3>
         <p class="card-description">{{ t('model.sorted_desc') }}</p>

@@ -38,6 +38,14 @@ OFFSET = BASE_SCORE - FACTOR * np.log(BASE_ODDS)
 # Порог решения
 SCORE_THRESHOLD = 450  # ниже — отказ
 
+# Affordability-потолок для find_max_limit(): скор-модель одна не гарантирует
+# реалистичность лимита -- достаточно "хороших" по остальным фичам заявителей
+# модель одобряла даже там, где новый платёж физически превышал бы весь
+# месячный доход (PTI > 100%), поскольку другие положительные факторы
+# перевешивали штраф за высокий PTI в сумме баллов. Это отдельное жёсткое
+# бизнес-правило поверх скора, а не то, чему учили логрегрессию.
+MAX_PTI_FOR_LIMIT_SEARCH = 0.5  # платёж по новому + существующим кредитам не выше 50% дохода
+
 
 class CreditScoringEngine:
     """Основной скоринговый движок."""
@@ -308,9 +316,8 @@ class CreditScoringEngine:
             new_payment = mid / max(muddat, 1)
             test_features["summa_daromad_ratio"] = mid / max(declared_income, 1)
             test_features["new_monthly_payment"] = new_payment
-            test_features["pti"] = (
-                existing_monthly_debt + new_payment
-            ) / max(test_features.get("median_income", 1), 1)
+            pti_at_mid = (existing_monthly_debt + new_payment) / max(test_features.get("median_income", 1), 1)
+            test_features["pti"] = pti_at_mid
 
             # Only the approve/reject boundary matters during search -- call
             # predict_pd directly instead of the full score_application(),
@@ -319,7 +326,12 @@ class CreditScoringEngine:
             # text on all 30 iterations for output nothing here ever reads.
             X = np.array([[test_features.get(f, 0) for f in self.feature_columns]], dtype=object)
             score = int(self.pd_to_score(self.predict_pd(X))[0])
-            if score >= SCORE_THRESHOLD:
+
+            # Hard affordability cap alongside the model's own score -- PTI
+            # rising with `mid` while everything else stays fixed means this
+            # stays monotonic, so the binary search invariant still holds.
+            approved = score >= SCORE_THRESHOLD and pti_at_mid <= MAX_PTI_FOR_LIMIT_SEARCH
+            if approved:
                 best_limit = mid
                 lo = mid + 1
             else:
@@ -515,6 +527,7 @@ class CreditScoringEngine:
                 for f, v in sorted(iv_info.items(), key=lambda x: x[1], reverse=True)
             },
             "threshold": SCORE_THRESHOLD,
+            "max_pti_for_limit_search": MAX_PTI_FOR_LIMIT_SEARCH,
             "base_score": BASE_SCORE,
             "pdo": PDO,
             "base_odds": BASE_ODDS,
