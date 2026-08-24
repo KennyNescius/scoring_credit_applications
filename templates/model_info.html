@@ -57,10 +57,29 @@
     <div class="info-card" id="model-affordability">
         <h3>{{ t('model.affordability.title') }}</h3>
         <p class="card-description">{{ t('model.affordability.desc') }}</p>
-        <div class="info-item">
-            <span class="info-label">{{ t('model.affordability.cap') }}</span>
-            <span class="info-value" style="font-weight: 600; color: var(--accent-orange)">{{ (info.max_pti_for_limit_search * 100)|round(0)|int }}%</span>
-        </div>
+        <p class="card-description"><em>{{ t('model.affordability.not_tor') }}</em></p>
+        <form method="POST" action="{{ url_for('update_affordability_settings') }}">
+            <div class="info-item">
+                <label class="info-label" for="affordability-enabled" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="affordability-enabled" name="enabled"
+                           {% if affordability_enabled %}checked{% endif %}>
+                    {{ t('model.affordability.toggle') }}
+                </label>
+            </div>
+            <div class="info-item">
+                <label class="info-label" for="affordability-cap-pct">{{ t('model.affordability.cap') }}</label>
+                <input type="number" id="affordability-cap-pct" name="cap_pct" min="1" max="100" step="1"
+                       value="{{ affordability_cap_pct }}" style="width: 90px;"> %
+            </div>
+            <button type="submit" class="btn btn-secondary" style="margin-top: 10px;">{{ t('uw.apply') }}</button>
+            <p class="card-description" style="margin-top: 8px;">
+                {{ t('model.affordability.status') }}:
+                <strong style="color: {{ 'var(--accent-green)' if affordability_enabled else 'var(--text-muted)' }}">
+                    {{ t('model.affordability.on') if affordability_enabled else t('model.affordability.off') }}
+                </strong>
+                {% if affordability_enabled %}({{ affordability_cap_pct }}%){% endif %}
+            </p>
+        </form>
     </div>
 
     <div class="info-card" id="model-coefficients" style="max-height: 500px; overflow-y: auto;">

@@ -12,7 +12,7 @@ import pytest
 import numpy as np
 import db as db_module
 from data_loader import build_feature_dataset, FEATURE_COLUMNS, aggregate_monthly_flows, aggregate_existing_loans
-from scoring_engine import CreditScoringEngine, SCORE_THRESHOLD, MAX_PTI_FOR_LIMIT_SEARCH
+from scoring_engine import CreditScoringEngine, SCORE_THRESHOLD, DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH
 
 
 @pytest.fixture(scope="module")
@@ -153,25 +153,36 @@ class TestScoringEngine:
         limit = engine.find_max_limit(features)
         assert limit >= 0, "Лимит >= 0"
 
-    def test_find_max_limit_never_exceeds_affordability_cap(self, engine):
-        # Reproduces the profile the user found: enough "good" unrelated
-        # factors (private-sector, short term, clean history) let the score
-        # alone approve a limit whose payment exceeded the applicant's
-        # entire monthly income (PTI > 100%). find_max_limit() now enforces
-        # a hard PTI ceiling on top of the score for exactly this reason.
-        features = {
-            "yosh": 30, "ish_staji_oy": 24, "oila_azolari": 3,
-            "bandlik_encoded": "xususiy", "talim_encoded": "oliy",
-            "maqsad_encoded": "iste'mol", "muddat_oy": 12,
-            "median_income": 3000000, "income_cv": 0.15, "max_delinquency": 0,
-            "dti": 0.0, "pti": 0.0, "summa_daromad_ratio": 0.0,
-            "deklaratsiya_daromad": 3000000,
-        }
-        limit = engine.find_max_limit(features)
-        implied_payment = limit / features["muddat_oy"]
-        implied_pti = implied_payment / features["median_income"]
-        assert implied_pti <= MAX_PTI_FOR_LIMIT_SEARCH + 1e-6, (
-            f"limit={limit} implies PTI={implied_pti:.3f}, over the {MAX_PTI_FOR_LIMIT_SEARCH} cap"
+    # The profile below is the one the user found: enough "good" unrelated
+    # factors (private-sector, short term, clean history) let the score
+    # alone approve a limit whose payment exceeds the applicant's entire
+    # monthly income (PTI > 100%). find_max_limit()'s pti_cap parameter is
+    # opt-in (None = off, matching the toggle's default) so both states need
+    # covering: off should still reproduce the original behavior, on should
+    # enforce the ceiling.
+    HIGH_SCORE_LOW_AFFORDABILITY_PROFILE = {
+        "yosh": 30, "ish_staji_oy": 24, "oila_azolari": 3,
+        "bandlik_encoded": "xususiy", "talim_encoded": "oliy",
+        "maqsad_encoded": "iste'mol", "muddat_oy": 12,
+        "median_income": 3000000, "income_cv": 0.15, "max_delinquency": 0,
+        "dti": 0.0, "pti": 0.0, "summa_daromad_ratio": 0.0,
+        "deklaratsiya_daromad": 3000000,
+    }
+
+    def test_find_max_limit_pti_cap_off_by_default(self, engine):
+        limit = engine.find_max_limit(dict(self.HIGH_SCORE_LOW_AFFORDABILITY_PROFILE))  # no pti_cap passed
+        implied_pti = (limit / self.HIGH_SCORE_LOW_AFFORDABILITY_PROFILE["muddat_oy"]) / self.HIGH_SCORE_LOW_AFFORDABILITY_PROFILE["median_income"]
+        assert implied_pti > 1.0, (
+            f"limit={limit} implies PTI={implied_pti:.3f} -- expected the score-only "
+            "(cap disabled) behavior to still exceed 100% PTI for this profile"
+        )
+
+    def test_find_max_limit_respects_pti_cap_when_enabled(self, engine):
+        cap = DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH
+        limit = engine.find_max_limit(dict(self.HIGH_SCORE_LOW_AFFORDABILITY_PROFILE), pti_cap=cap)
+        implied_pti = (limit / self.HIGH_SCORE_LOW_AFFORDABILITY_PROFILE["muddat_oy"]) / self.HIGH_SCORE_LOW_AFFORDABILITY_PROFILE["median_income"]
+        assert implied_pti <= cap + 1e-6, (
+            f"limit={limit} implies PTI={implied_pti:.3f}, over the {cap} cap"
         )
 
 
@@ -258,6 +269,19 @@ class TestPersistence:
         matching = [r for r in latest if r["application_id"] == "AP1"]
         assert len(matching) == 1, "должна остаться ровно одна (последняя) запись на заявку"
         assert matching[0]["score"] == 440
+
+    def test_settings_default_to_none_until_set(self, isolated_db):
+        assert isolated_db.get_setting("affordability_cap_enabled") is None
+        assert isolated_db.get_setting("affordability_cap_enabled", "0") == "0"
+
+    def test_settings_round_trip_and_upsert(self, isolated_db):
+        isolated_db.set_setting("affordability_cap_enabled", "1")
+        isolated_db.set_setting("affordability_cap_pti", 0.5)
+        assert isolated_db.get_setting("affordability_cap_enabled") == "1"
+        assert isolated_db.get_setting("affordability_cap_pti") == "0.5"
+
+        isolated_db.set_setting("affordability_cap_enabled", "0")  # upsert, not a new row
+        assert isolated_db.get_setting("affordability_cap_enabled") == "0"
 
 
 if __name__ == "__main__":

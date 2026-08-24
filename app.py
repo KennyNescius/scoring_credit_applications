@@ -17,7 +17,7 @@ import pandas as pd
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import db
 from data_loader import build_feature_dataset, FEATURE_COLUMNS
-from scoring_engine import get_engine, SCORE_THRESHOLD
+from scoring_engine import get_engine, SCORE_THRESHOLD, DEFAULT_AFFORDABILITY_CAP_ENABLED, DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH
 from translations import translate
 
 db.init_db()
@@ -73,6 +73,24 @@ def tr_lookup(mapping, raw, lang, default="—"):
     if raw == "orta_maxsus":  # composite: same convention used in the <select> options
         return f"{translate('f.edu.mid', lang)} {translate('f.edu.special', lang)}"
     return raw
+
+
+def get_affordability_settings():
+    """Toggleable/adjustable affordability cap on find_max_limit() -- our
+    own addition on top of the bonus limit-search algorithm, not part of
+    the ToR. Off by default (matches DEFAULT_AFFORDABILITY_CAP_ENABLED);
+    persisted in db.py's settings table so a change on /model-info sticks
+    across requests/workers. Returns (enabled: bool, cap: float)."""
+    enabled = db.get_setting("affordability_cap_enabled", str(int(DEFAULT_AFFORDABILITY_CAP_ENABLED))) == "1"
+    cap = float(db.get_setting("affordability_cap_pti", str(DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH)))
+    return enabled, cap
+
+
+def get_pti_cap():
+    """None when the cap is off -- find_max_limit()'s own default, so
+    callers that forget this helper still get the score-only behavior."""
+    enabled, cap = get_affordability_settings()
+    return cap if enabled else None
 
 
 # Загрузка данных и модели при старте
@@ -213,7 +231,7 @@ def apply_form():
 
             # Лимит поиск (бонус)
             features["deklaratsiya_daromad"] = form_data["deklaratsiya_daromad"]
-            max_limit = engine.find_max_limit(features)
+            max_limit = engine.find_max_limit(features, pti_cap=get_pti_cap())
             result["max_limit"] = f"{max_limit:,.0f}"
 
             # Immutable decision log: every manually submitted application
@@ -413,7 +431,7 @@ def application_detail(app_id):
 
     # Лимит
     features["deklaratsiya_daromad"] = row.get("deklaratsiya_daromad", 0)
-    max_limit = engine.find_max_limit(features)
+    max_limit = engine.find_max_limit(features, pti_cap=get_pti_cap())
 
     return render_template(
         "application_detail.html",
@@ -467,7 +485,7 @@ def api_whatif():
 
         # Лимит
         features["deklaratsiya_daromad"] = median_income
-        max_limit = engine.find_max_limit(features)
+        max_limit = engine.find_max_limit(features, pti_cap=get_pti_cap())
         result["max_limit"] = max_limit
 
         return jsonify(result)
@@ -481,7 +499,27 @@ def model_info():
     """Информация о модели."""
     engine = get_scoring_engine()
     info = engine.get_model_info(lang=session.get('lang', 'ru'))
-    return render_template("model_info.html", info=info, lang=session.get('lang', 'ru'))
+    enabled, cap = get_affordability_settings()
+    return render_template(
+        "model_info.html", info=info, lang=session.get('lang', 'ru'),
+        affordability_enabled=enabled, affordability_cap_pct=round(cap * 100),
+    )
+
+
+@app.route("/model-info/affordability", methods=["POST"])
+def update_affordability_settings():
+    """Toggle/adjust the affordability cap (db.py settings, global -- see
+    get_affordability_settings()). Not a ToR requirement; our own addition
+    on top of the find_max_limit bonus algorithm."""
+    enabled = request.form.get("enabled") == "on"
+    try:
+        pct = float(request.form.get("cap_pct", DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH * 100))
+    except ValueError:
+        pct = DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH * 100
+    pct = min(max(pct, 1), 100)  # keep it a sane percentage
+    db.set_setting("affordability_cap_enabled", "1" if enabled else "0")
+    db.set_setting("affordability_cap_pti", pct / 100)
+    return redirect(url_for('model_info'))
 
 @app.route("/erd")
 def erd_diagram():

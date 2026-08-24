@@ -38,13 +38,17 @@ OFFSET = BASE_SCORE - FACTOR * np.log(BASE_ODDS)
 # Порог решения
 SCORE_THRESHOLD = 450  # ниже — отказ
 
-# Affordability-потолок для find_max_limit(): скор-модель одна не гарантирует
+# Affordability-потолок для find_max_limit() -- НЕ из ТЗ, наше собственное
+# бизнес-правило поверх бонусного алгоритма. Скор-модель одна не гарантирует
 # реалистичность лимита -- достаточно "хороших" по остальным фичам заявителей
 # модель одобряла даже там, где новый платёж физически превышал бы весь
 # месячный доход (PTI > 100%), поскольку другие положительные факторы
-# перевешивали штраф за высокий PTI в сумме баллов. Это отдельное жёсткое
-# бизнес-правило поверх скора, а не то, чему учили логрегрессию.
-MAX_PTI_FOR_LIMIT_SEARCH = 0.5  # платёж по новому + существующим кредитам не выше 50% дохода
+# перевешивали штраф за высокий PTI в сумме баллов.
+# Управляется через db.py settings (переключаемо на /model-info), по
+# умолчанию выключено -- эти два значения используются только пока ни один
+# ключ ещё не сохранён в settings.
+DEFAULT_AFFORDABILITY_CAP_ENABLED = False
+DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH = 0.5  # платёж по новому + существующим кредитам не выше 50% дохода
 
 
 class CreditScoringEngine:
@@ -281,10 +285,15 @@ class CreditScoringEngine:
             "version": self.version,
         }
 
-    def find_max_limit(self, features_dict, min_amount=100000, max_amount=100000000):
+    def find_max_limit(self, features_dict, min_amount=100000, max_amount=100000000, pti_cap=None):
         """
         Бонус: Binary search для максимального лимита кредита.
         Ищет максимальную сумму, при которой заявка ещё одобряется.
+
+        pti_cap: None (по умолчанию) -- решает только скор-модель, как учили
+        логрегрессию. Число (например 0.5) -- дополнительно требует, чтобы
+        (текущая нагрузка + новый платёж) / доход не превышала эту долю;
+        см. DEFAULT_MAX_PTI_FOR_LIMIT_SEARCH и app.py: get_affordability_settings().
         """
         if not self.is_trained:
             raise RuntimeError("Модель не обучена.")
@@ -327,10 +336,13 @@ class CreditScoringEngine:
             X = np.array([[test_features.get(f, 0) for f in self.feature_columns]], dtype=object)
             score = int(self.pd_to_score(self.predict_pd(X))[0])
 
-            # Hard affordability cap alongside the model's own score -- PTI
-            # rising with `mid` while everything else stays fixed means this
-            # stays monotonic, so the binary search invariant still holds.
-            approved = score >= SCORE_THRESHOLD and pti_at_mid <= MAX_PTI_FOR_LIMIT_SEARCH
+            # Optional hard affordability cap alongside the model's own score
+            # -- PTI rising with `mid` while everything else stays fixed
+            # means this stays monotonic, so the binary search invariant
+            # still holds regardless of whether the cap is active.
+            approved = score >= SCORE_THRESHOLD
+            if pti_cap is not None:
+                approved = approved and pti_at_mid <= pti_cap
             if approved:
                 best_limit = mid
                 lo = mid + 1
@@ -527,7 +539,6 @@ class CreditScoringEngine:
                 for f, v in sorted(iv_info.items(), key=lambda x: x[1], reverse=True)
             },
             "threshold": SCORE_THRESHOLD,
-            "max_pti_for_limit_search": MAX_PTI_FOR_LIMIT_SEARCH,
             "base_score": BASE_SCORE,
             "pdo": PDO,
             "base_odds": BASE_ODDS,

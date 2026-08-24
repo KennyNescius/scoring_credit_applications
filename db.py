@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS decisions (
 
 CREATE INDEX IF NOT EXISTS idx_decisions_application_id ON decisions(application_id);
 CREATE INDEX IF NOT EXISTS idx_decisions_scorecard_version ON decisions(scorecard_version_id);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -200,6 +205,24 @@ def list_latest_decisions(limit=10000):
     ).fetchall()
     conn.close()
     return rows
+
+
+def get_setting(key, default=None):
+    conn = get_conn()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return row["value"] if row is not None else default
+
+
+def set_setting(key, value):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, str(value)),
+    )
+    conn.commit()
+    conn.close()
 
 
 def list_decisions(scorecard_version_id=None, limit=5000):
