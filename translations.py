@@ -140,6 +140,7 @@ TRANSLATIONS = {
     "erd.f21": {'ru': 'dataset / web_form', 'uz': 'dataset / web_form'},
     "erd.f22": {'ru': 'Факторы — заморожены, языконезависимы', 'uz': "Omillar — muzlatilgan, tildan mustaqil"},
     "erd.f23": {'ru': 'Сырые фичи на момент решения — заморожены', 'uz': "Qaror vaqtidagi xom xususiyatlar — muzlatilgan"},
+    "erd.f24": {'ru': "напр. affordability_cap_enabled, affordability_cap_pti", 'uz': "masalan, affordability_cap_enabled, affordability_cap_pti"},
     "erd.section.persist": {'ru': 'Persistence-слой (SQLite, credit_scoring.db)', 'uz': "Persistence qatlami (SQLite, credit_scoring.db)"},
     "app.not_found": {'ru': 'Заявка не найдена', 'uz': 'Ariza topilmadi'},
     "outcome.toladi": {'ru': 'Погашен', 'uz': "To'langan"},

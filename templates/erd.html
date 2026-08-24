@@ -175,6 +175,11 @@
             string input_snapshot_json "{{ t('erd.f23') }}"
         }
 
+        SETTINGS {
+            string key PK
+            string value "{{ t('erd.f24') }}"
+        }
+
         APPLICANTS ||--o{ APPLICATIONS : "submits"
         APPLICANTS ||--o{ EXISTING_LOANS : "has"
         APPLICANTS ||--o{ MONTHLY_FLOWS : "generates"
