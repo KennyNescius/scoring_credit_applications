@@ -16,12 +16,21 @@ import json
 import numpy as np
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+import db
 from data_loader import build_feature_dataset, FEATURE_COLUMNS
 from scoring_engine import get_engine, SCORE_THRESHOLD
 from translations import translate
 
+db.init_db()
+
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+# Fixed, not os.urandom(24): with multiple gunicorn workers (no --preload),
+# each worker process re-executes this module independently, so a random
+# key here gives every worker a DIFFERENT secret. A session cookie signed
+# by worker A then fails validation on worker B, silently resetting
+# session['lang'] back to the default -- this was reproducible (~50% of
+# requests) and is exactly why the language toggle looked flaky.
+app.secret_key = os.environ.get("SECRET_KEY", "cbu-hackathon-2026-credit-scoring-dev-key")
 
 @app.context_processor
 def inject_translator():
@@ -172,6 +181,19 @@ def apply_form():
             max_limit = engine.find_max_limit(features)
             result["max_limit"] = f"{max_limit:,.0f}"
 
+            # Immutable decision log: every manually submitted application
+            # gets its own append-only entry, tagged with the scorecard
+            # version that actually made the decision.
+            application_id = f"WEB-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}"
+            db.insert_decision(
+                application_id=application_id, applicant_id=None,
+                scorecard_version_id=engine.version_id, score=result["score"],
+                pd_value=result["pd"], decision=result["decision"],
+                threshold=result["threshold"], factors=result["factors"],
+                input_snapshot=features, source="web_form",
+            )
+            result["application_id"] = application_id
+
         except Exception as e:
             result = {"error": str(e)}
 
@@ -180,8 +202,9 @@ def apply_form():
 
 @app.route("/underwriter")
 def underwriter():
-    """Панель андеррайтера — все заявки."""
-    engine = get_scoring_engine()
+    """Панель андеррайтера — все заявки. Источник данных — immutable
+    decision log (db.py), а не пересчёт вживую: то, что видит андеррайтер,
+    это реально сохранённые решения, а не мгновенный снимок модели."""
     df = get_data()
 
     # Параметры фильтрации
@@ -190,17 +213,17 @@ def underwriter():
     page = int(request.args.get("page", 1))
     per_page = 25
 
-    # Скоринг всех заявок
-    X_all = df[FEATURE_COLUMNS].values
-    pd_vals = engine.predict_pd(X_all)
-    scores = engine.pd_to_score(pd_vals)
+    decisions = db.list_latest_decisions()
+    dec_df = pd.DataFrame([{
+        "application_id": d["application_id"],
+        "score": d["score"],
+        "pd_predicted": d["pd"],
+        "decision_predicted": d["decision"],
+    } for d in decisions])
 
-    df_scored = df.copy()
-    df_scored["score"] = scores
-    df_scored["pd_predicted"] = pd_vals
-    df_scored["decision_predicted"] = [
-        "toladi" if s >= SCORE_THRESHOLD else "defolt" for s in scores
-    ]
+    # web_form-заявки (application_id "WEB-...") не входят в датасет -- их
+    # нет смысла показывать в "портфельной" очереди по существующим заявкам.
+    df_scored = df.merge(dec_df, on="application_id", how="inner")
 
     # Фильтрация
     if filter_type == "train":
@@ -270,7 +293,12 @@ def underwriter():
 
 @app.route("/underwriter/<app_id>")
 def application_detail(app_id):
-    """Детали конкретной заявки."""
+    """Детали конкретной заявки. Score/PD/decision/factors читаются из
+    immutable decision log (db.py), а не пересчитываются -- то, что видно
+    здесь, это то, что реально было решено, а не текущее состояние модели.
+    Человекочитаемый текст (feature_name/reason/client_reasons) при этом
+    генерируется заново в языке текущей сессии из замороженных, но
+    языконезависимых данных (feature-ключ, points, direction)."""
     engine = get_scoring_engine()
     df = get_data()
 
@@ -280,9 +308,42 @@ def application_detail(app_id):
 
     row = row.iloc[0]
     features = {f: row[f] for f in FEATURE_COLUMNS}
-
     lang = session.get('lang', 'ru')
-    result = engine.score_application(features, lang=lang)
+
+    log_row = db.get_latest_decision_for_application(app_id)
+    if log_row is None:
+        # Defensive fallback -- shouldn't happen since the whole dataset is
+        # seeded at build time, but self-heal by computing and persisting
+        # rather than silently leaving this application unlogged.
+        result = engine.score_application(features, lang=lang)
+        db.insert_decision(
+            application_id=app_id, applicant_id=row.get("applicant_id"),
+            scorecard_version_id=engine.version_id, score=result["score"],
+            pd_value=result["pd"], decision=result["decision"],
+            threshold=result["threshold"], factors=result["factors"],
+            input_snapshot=features, source="dataset",
+        )
+        log_row = dict(db.get_latest_decision_for_application(app_id))
+    else:
+        log_row = dict(log_row)
+        stored_factors = json.loads(log_row["factors_json"])
+        factors = [
+            dict(f, feature_name=translate(f"feat.{f['feature']}", lang))
+            for f in stored_factors
+        ]
+        score = log_row["score"]
+        decision = log_row["decision"]
+        result = {
+            "score": score,
+            "pd": log_row["pd"],
+            "decision": decision,
+            "decision_label": translate("status.approved", lang) if decision == "toladi" else translate("status.rejected", lang),
+            "factors": factors,
+            "reason": engine.generate_reason_text(factors, score, decision, lang=lang),
+            "client_reasons": engine.generate_client_reasons(factors, decision, lang=lang),
+            "threshold": log_row["threshold"],
+            "version": f"v{log_row['scorecard_version_id']}",
+        }
 
     # Дополнительные данные заявки
     app_info = {
@@ -318,6 +379,7 @@ def application_detail(app_id):
         app_info=app_info,
         result=result,
         max_limit=f"{max_limit:,.0f}",
+        log_entry=log_row,
         lang=lang
     )
 
@@ -386,4 +448,5 @@ def erd_diagram():
     return render_template("erd.html", lang=session.get('lang', 'ru'))
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host="0.0.0.0", port=port)

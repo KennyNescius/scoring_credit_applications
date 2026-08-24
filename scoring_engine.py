@@ -50,6 +50,7 @@ class CreditScoringEngine:
         self.is_trained = False
         self.version = "v1.0"
         self.version_date = None
+        self.version_id = None  # scorecard_versions.version_id (SCD Type 2, db.py)
         self.woe_bins = {}  # WOE биннинг
         self.target_encodings = {}
         self.clip_thresholds = {}
@@ -283,6 +284,19 @@ class CreditScoringEngine:
         lo, hi = min_amount, max_amount
         best_limit = 0
 
+        # Existing monthly debt burden, independent of the amount being
+        # searched. None of the three call sites (apply_form, application_detail,
+        # api_whatif) actually put "mavjud_oylik_yuk"/"total_loan_payment" into
+        # features_dict -- FEATURE_COLUMNS doesn't include them, so they were
+        # silently dropped and every search ran as if the applicant had zero
+        # existing debt, inflating the resulting limit. "dti" IS set correctly
+        # by every caller as monthly_debt / income, so back the debt amount out
+        # of that instead of depending on keys that don't reliably arrive here.
+        income_for_dti = features_dict.get("median_income", 1)
+        existing_monthly_debt = features_dict.get(
+            "mavjud_oylik_yuk", features_dict.get("total_loan_payment", 0)
+        ) or (features_dict.get("dti", 0) * max(income_for_dti, 1))
+
         for _ in range(30):  # ~30 итераций достаточно для точности до 1 сума
             mid = (lo + hi) // 2
             test_features = features_dict.copy()
@@ -292,13 +306,10 @@ class CreditScoringEngine:
                                                  test_features.get("median_income", 1))
             muddat = test_features.get("muddat_oy", 12)
             new_payment = mid / max(muddat, 1)
-            test_features["sorlgan_summa"] = mid
             test_features["summa_daromad_ratio"] = mid / max(declared_income, 1)
             test_features["new_monthly_payment"] = new_payment
             test_features["pti"] = (
-                test_features.get("mavjud_oylik_yuk", 0) +
-                test_features.get("total_loan_payment", 0) +
-                new_payment
+                existing_monthly_debt + new_payment
             ) / max(test_features.get("median_income", 1), 1)
 
             result = self.score_application(test_features)
@@ -384,6 +395,7 @@ class CreditScoringEngine:
             "clip_thresholds": self.clip_thresholds,
             "version": self.version,
             "version_date": self.version_date,
+            "version_id": self.version_id,
         }
         with open(path, "wb") as f:
             pickle.dump(data, f)
@@ -403,8 +415,65 @@ class CreditScoringEngine:
         self.clip_thresholds = data.get("clip_thresholds", {})
         self.version = data.get("version", "v1.0")
         self.version_date = data.get("version_date", "N/A")
+        self.version_id = data.get("version_id")
         self.is_trained = True
         return True
+
+    def publish_version(self, model_path, train_auc=None, test_auc=None, test_gini=None, n_train=None):
+        """SCD Type 2: register this trained model as a new scorecard version
+        in db.py (closes the previously-active version, never updates it)."""
+        import db
+        self.version_id = db.publish_scorecard_version(
+            model_path=model_path, train_auc=train_auc, test_auc=test_auc,
+            test_gini=test_gini, n_train=n_train,
+            description=f"LogisticRegression, C={getattr(self.model, 'C', '?')}",
+        )
+        self.version = f"v{self.version_id}"
+        return self.version_id
+
+    def seed_decision_log(self, df):
+        """Populate the immutable decisions log with one entry per
+        application in the dataset, tagged with this engine's current
+        scorecard_version_id. Idempotent at the call-site (app.py/__main__
+        check db.has_decisions_for_version() first) -- this method itself
+        just does the bulk insert.
+
+        Stores factors as returned by explain_decision(): each item already
+        carries the language-agnostic "feature" key alongside a "feature_name"
+        that happens to be in whatever `lang` was passed here. Display code
+        re-translates "feature" at render time using the viewer's current
+        session language, so the stored log is language-agnostic in practice
+        even though this call bakes in one language's labels redundantly.
+        """
+        import db
+
+        if self.version_id is None:
+            raise RuntimeError("Engine has no version_id -- call publish_version() first.")
+
+        X_all = df[self.feature_columns].values
+        pd_vals = self.predict_pd(X_all)
+        scores = self.pd_to_score(pd_vals)
+
+        rows = []
+        for idx, (_, row) in enumerate(df.iterrows()):
+            features_dict = {f: row[f] for f in self.feature_columns}
+            factors = self.explain_decision(features_dict, lang="ru")
+            decision = "toladi" if scores[idx] >= SCORE_THRESHOLD else "defolt"
+            rows.append({
+                "application_id": row["application_id"],
+                "applicant_id": row.get("applicant_id"),
+                "scorecard_version_id": self.version_id,
+                "score": int(scores[idx]),
+                "pd": round(float(pd_vals[idx]), 4),
+                "decision": decision,
+                "threshold": SCORE_THRESHOLD,
+                "source": "dataset",
+                "factors_json": json.dumps(factors, ensure_ascii=False),
+                "input_snapshot_json": json.dumps(features_dict, ensure_ascii=False, default=str),
+            })
+
+        db.insert_decisions_bulk(rows)
+        print(f"Immutable decision log: seeded {len(rows)} rows for scorecard_version_id={self.version_id}")
 
     def get_model_info(self, lang="ru"):
         """Информация о модели для UI."""
@@ -455,16 +524,43 @@ class CreditScoringEngine:
 # Глобальный экземпляр
 engine = CreditScoringEngine()
 
+MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+
+
+def train_publish_and_seed(eng, df):
+    """Full pipeline for one scorecard version: train -> evaluate -> publish
+    (SCD Type 2) -> save the versioned model file -> seed the immutable
+    decision log for every application in the dataset. Shared by __main__
+    (build time) and get_engine()'s fallback (runtime safety net)."""
+    import db
+    db.init_db()
+
+    train_auc = eng.train(df)
+    test_auc, gini, test_df = eng.evaluate_on_test(df)
+
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    versioned_path = os.path.join(MODELS_DIR, f"model_{timestamp}.pkl")
+
+    eng.publish_version(
+        model_path=versioned_path, train_auc=train_auc, test_auc=test_auc,
+        test_gini=gini, n_train=int(df["target"].notna().sum()),
+    )
+    eng.save_model(versioned_path)
+    eng.save_model()  # also refresh the canonical model.pkl the app loads by default
+
+    eng.generate_results_file(df)
+    eng.seed_decision_log(df)
+
+    return train_auc, test_auc, gini, test_df
+
 
 def get_engine():
     """Получить готовый движок (обучить если нужно)."""
     if not engine.is_trained:
         if not engine.load_model():
             df = build_feature_dataset()
-            engine.train(df)
-            engine.save_model()
-            engine.evaluate_on_test(df)
-            engine.generate_results_file(df)
+            train_publish_and_seed(engine, df)
     return engine
 
 
@@ -476,17 +572,8 @@ if __name__ == "__main__":
     df = build_feature_dataset()
     eng = CreditScoringEngine()
 
-    # Обучение
-    train_auc = eng.train(df)
-
-    # Оценка на тесте
-    test_auc, gini, test_df = eng.evaluate_on_test(df)
-
-    # Генерация результатов
-    eng.generate_results_file(df)
-
-    # Сохранение
-    eng.save_model()
+    train_auc, test_auc, gini, test_df = train_publish_and_seed(eng, df)
+    print(f"[Version] Published scorecard_version_id={eng.version_id} -> {eng.version}")
 
     # Информация о модели
     info = eng.get_model_info()

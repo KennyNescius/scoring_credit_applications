@@ -152,9 +152,11 @@
     <div class="log-entry">
         <code>
 {
-  "application_id": "{{ app_info.application_id }}",
-  "timestamp": "{{ result.version }}",
-  "model_version": "{{ result.version }}",
+  "decision_id": {{ log_entry.decision_id }},
+  "created_at": "{{ log_entry.created_at }}",
+  "application_id": "{{ log_entry.application_id }}",
+  "scorecard_version_id": {{ log_entry.scorecard_version_id }},
+  "source": "{{ log_entry.source }}",
   "score": {{ result.score }},
   "pd": {{ result.pd }},
   "decision": "{{ result.decision }}",

@@ -6,8 +6,11 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import json
+
 import pytest
 import numpy as np
+import db as db_module
 from data_loader import build_feature_dataset, FEATURE_COLUMNS, aggregate_monthly_flows, aggregate_existing_loans
 from scoring_engine import CreditScoringEngine, SCORE_THRESHOLD
 
@@ -105,11 +108,27 @@ class TestScoringEngine:
             assert "direction" in factor
             assert factor["direction"] in ("positive", "negative")
 
-    def test_reason_text_not_empty(self, engine, dataset):
+    def test_reason_text_not_empty_for_rejection(self, engine, dataset):
+        # generate_reason_text() only fills `reason` for decision == "defolt"
+        # (an approval has nothing to explain away) -- row 0 happens to be an
+        # approval, so force a clearly bad profile to actually exercise the
+        # rejection path this test is named for.
         row = dataset.iloc[0]
         features = {f: row[f] for f in FEATURE_COLUMNS}
+        features["dti"] = 0.9
+        features["pti"] = 1.5
         result = engine.score_application(features)
+        assert result["decision"] == "defolt", "Bu profil rad etilishi kerak edi"
         assert len(result["reason"]) > 10, "Причина не должна быть пустой"
+
+    def test_reason_text_empty_for_approval(self, engine, dataset):
+        row = dataset.iloc[0]
+        features = {f: row[f] for f in FEATURE_COLUMNS}
+        features["dti"] = 0.05
+        features["pti"] = 0.05
+        result = engine.score_application(features)
+        assert result["decision"] == "toladi", "Bu profil tasdiqlanishi kerak edi"
+        assert result["reason"] == "", "Tasdiqlash uchun sabab bo'lmasligi kerak"
 
     def test_high_dti_increases_risk(self, engine, dataset):
         """Высокий DTI должен увеличивать риск (выше PD, ниже скор)."""
@@ -150,6 +169,74 @@ class TestResultsFile:
         test_ids = dataset[dataset["target"].isna()]["application_id"].tolist()
         result_ids = result_df["application_id"].tolist()
         assert set(test_ids) == set(result_ids), "Все test заявки должны быть в результате"
+
+
+class TestPersistence:
+    """Immutable decision log + SCD Type 2 (db.py) -- Base requirement из ТЗ.
+    Изолировано от боевого credit_scoring.db через monkeypatch DB_PATH."""
+
+    @pytest.fixture
+    def isolated_db(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+        db_module.init_db()
+        return db_module
+
+    def test_no_update_or_delete_api_exists(self):
+        # "Immutable" is only true if there's no code path that can mutate a
+        # decision after the fact -- assert the API surface itself forbids it.
+        assert not hasattr(db_module, "update_decision")
+        assert not hasattr(db_module, "delete_decision")
+
+    def test_publish_scorecard_version_is_scd2(self, isolated_db):
+        v1 = isolated_db.publish_scorecard_version(model_path="m1.pkl", train_auc=0.80)
+        v2 = isolated_db.publish_scorecard_version(model_path="m2.pkl", train_auc=0.81)
+
+        row1 = isolated_db.get_scorecard_version(v1)
+        row2 = isolated_db.get_scorecard_version(v2)
+        assert row1["valid_to"] is not None, "старая версия должна быть закрыта, а не удалена"
+        assert row2["valid_to"] is None, "новая версия должна быть активной"
+        assert isolated_db.get_active_scorecard_version()["version_id"] == v2
+
+    def test_insert_and_read_decision_round_trip(self, isolated_db):
+        v1 = isolated_db.publish_scorecard_version(model_path="m.pkl")
+        isolated_db.insert_decision(
+            application_id="AP_TEST", applicant_id="A_TEST", scorecard_version_id=v1,
+            score=500, pd_value=0.1, decision="toladi", threshold=450,
+            factors=[{"feature": "dti", "points": 10, "direction": "positive"}],
+            input_snapshot={"dti": 0.2}, source="dataset",
+        )
+        row = isolated_db.get_latest_decision_for_application("AP_TEST")
+        assert row is not None
+        assert row["score"] == 500
+        assert row["decision"] == "toladi"
+        # factors are stored language-agnostic (feature key + points), not
+        # pre-rendered text -- app.py regenerates labels at display time.
+        assert json.loads(row["factors_json"])[0]["feature"] == "dti"
+
+    def test_old_decision_keeps_pointing_at_its_own_scorecard_version(self, isolated_db):
+        v1 = isolated_db.publish_scorecard_version(model_path="m1.pkl")
+        isolated_db.insert_decision(
+            application_id="AP1", applicant_id="A1", scorecard_version_id=v1,
+            score=400, pd_value=0.3, decision="defolt", threshold=450,
+            factors=[], input_snapshot={}, source="dataset",
+        )
+        isolated_db.publish_scorecard_version(model_path="m2.pkl")  # retrain -> v2 active
+
+        row = isolated_db.get_latest_decision_for_application("AP1")
+        assert row["scorecard_version_id"] == v1, "старое решение не должно 'переехать' на новую версию"
+
+    def test_list_latest_decisions_dedupes_per_application(self, isolated_db):
+        v1 = isolated_db.publish_scorecard_version(model_path="m1.pkl")
+        for score in (400, 420, 440):  # simulate 3 re-scores of the same application
+            isolated_db.insert_decision(
+                application_id="AP1", applicant_id="A1", scorecard_version_id=v1,
+                score=score, pd_value=0.3, decision="defolt", threshold=450,
+                factors=[], input_snapshot={}, source="dataset",
+            )
+        latest = isolated_db.list_latest_decisions()
+        matching = [r for r in latest if r["application_id"] == "AP1"]
+        assert len(matching) == 1, "должна остаться ровно одна (последняя) запись на заявку"
+        assert matching[0]["score"] == 440
 
 
 if __name__ == "__main__":

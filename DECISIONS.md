@@ -60,9 +60,9 @@
 
 ### Почему именно так
 - **Интерпретируемость**: каждый коэффициент показывает направление и силу влияния
-- class_weight="balanced" — компенсация дисбаланса классов (11.5% дефолтов)
+- class_weight=None — намеренно, чтобы PD соответствовал реальным вероятностям дефолта, а не искусственно сбалансированным 50/50 (см. комментарий в scoring_engine.py:train())
 - StandardScaler — нормализация для корректного сравнения коэффициентов
-- C=0.5 — умеренная регуляризация для предотвращения переобучения
+- C подбирается через GridSearchCV (сетка [0.1, 0.5, 1.0, 5.0], 5-fold StratifiedKFold, scoring=roc_auc)
 
 ### Конвертация в скоринговый балл
 - Score = Offset + Factor × ln(Odds), где Odds = (1-PD)/PD
@@ -104,5 +104,14 @@
 | Pipeline | data_loader → scoring_engine → app |
 | Singleton | get_engine() — ленивая инициализация |
 | Strategy | Разные алгоритмы скоринга через единый интерфейс |
-| Immutable Log | Журнал решений (application_detail) |
-| SCD Type 2 | Версионирование модели (version + version_date) |
+| Immutable Log | `decisions` в db.py (SQLite) — только INSERT, ни одного UPDATE/DELETE в кодовой базе |
+| SCD Type 2 | `scorecard_versions` в db.py — новая строка на каждое обучение, `valid_to` закрывает предыдущую версию вместо изменения её на месте |
+
+## Персистентность (immutable decision log + SCD Type 2)
+
+См. `db.py` и `ERD.md`. Коротко:
+
+- **`scorecard_versions`** — SCD Type 2. `publish_scorecard_version()` в scoring_engine.py закрывает текущую активную версию (`valid_to = now`) и вставляет новую строку вместо UPDATE. Каждая версия хранит свои метрики (train_auc/test_auc/gini) и путь к своему pickle-файлу модели (`models/model_<timestamp>.pkl`) — старую модель физически можно поднять и пересчитать любое старое решение той же версией, которой оно было принято.
+- **`decisions`** — append-only. `db.py` не содержит ни одной функции `update_decision`/`delete_decision`. При сборке образа (`scoring_engine.py` → `seed_decision_log()`) в лог заносится решение по каждой из 2700 заявок датасета, привязанное к `scorecard_version_id` активной на тот момент версии. Заявки, поданные вручную через `/apply`, логируются отдельной записью с `source="web_form"`.
+- Хранятся **языконезависимые** данные (feature-ключ, сырое значение, baseline, баллы, направление) — не готовый текст. `application_detail()` в app.py генерирует `reason`/`client_reasons`/подписи факторов из этих замороженных данных **в языке текущей сессии** при каждом просмотре — то есть решение (баллы/PD/вердикт) неизменно, а текст объяснения корректно переключается между ru/uz.
+- Проверено вручную: повторный запуск `scoring_engine.py` закрывает version_id=1 (`valid_to` выставлен) и публикует version_id=2; 2701 старая запись `decisions` остаётся привязана к version_id=1 без изменений.

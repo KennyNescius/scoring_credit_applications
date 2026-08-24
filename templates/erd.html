@@ -144,9 +144,38 @@
             int oy_oxiri_qoldiq "{{ t('erd.f16') }}"
         }
 
+        SCORECARD_VERSIONS {
+            int version_id PK
+            string created_at
+            string valid_from
+            string valid_to "{{ t('erd.f17') }}"
+            string model_path "{{ t('erd.f18') }}"
+            float train_auc
+            float test_auc
+            float test_gini
+            int n_train "{{ t('erd.f19') }}"
+        }
+
+        DECISIONS {
+            int decision_id PK
+            string created_at
+            string application_id FK
+            string applicant_id
+            int scorecard_version_id FK
+            int score
+            float pd
+            string decision "{{ t('erd.f20') }}"
+            int threshold
+            string source "{{ t('erd.f21') }}"
+            string factors_json "{{ t('erd.f22') }}"
+            string input_snapshot_json "{{ t('erd.f23') }}"
+        }
+
         APPLICANTS ||--o{ APPLICATIONS : "submits"
         APPLICANTS ||--o{ EXISTING_LOANS : "has"
         APPLICANTS ||--o{ MONTHLY_FLOWS : "generates"
+        APPLICATIONS ||--o{ DECISIONS : "resolved by"
+        SCORECARD_VERSIONS ||--o{ DECISIONS : "scored with"
             </div>
         </div>
     </div>
