@@ -11,5 +11,7 @@ docker:
 
 clean:
 	rm -f model.pkl
+	rm -f credit_scoring.db
+	rm -rf models/
 	rm -rf natija/
 	rm -rf __pycache__/

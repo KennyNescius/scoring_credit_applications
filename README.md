@@ -15,6 +15,20 @@ docker-compose up --build
 make run
 ```
 
+### Скоринг на скрытом датасете (день 2)
+
+Судьи проверяют на отдельном закрытом датасете в том же формате ("2 Information
+provided to you" в ТЗ). Чтобы пересчитать на нём:
+
+1. Замените 4 файла в `a2_credit/` (`applicants.csv`, `applications.csv`,
+   `monthly_flows.csv`, `existing_loans.csv`) на файлы скрытого датасета —
+   те же имена и колонки.
+2. `docker-compose up --build` — `scoring_engine.py` переобучится и пересчитает
+   `natija/kredit_qarorlari.csv` на новых данных при сборке образа. Контейнер
+   ничего не монтирует поверх `natija/`, так что результат внутри образа не
+   перетирается старым файлом с хоста; `docker cp <container>:/app/natija/kredit_qarorlari.csv .`,
+   если нужна копия на хосте.
+
 ### Вариант 3: Вручную
 ```bash
 pip install -r requirements.txt

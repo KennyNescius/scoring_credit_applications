@@ -6,7 +6,6 @@ app.py — Flask веб-приложение для кредитного ско�
   /underwriter — Панель андеррайтера (банковская сторона)
   /underwriter/<app_id> — Детали заявки
   /whatif — What-if симулятор (бонус)
-  /api/score — API для скоринга
   /api/whatif — API для симулятора
   /model-info — Информация о модели
 """

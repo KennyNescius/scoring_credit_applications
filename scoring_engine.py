@@ -312,8 +312,14 @@ class CreditScoringEngine:
                 existing_monthly_debt + new_payment
             ) / max(test_features.get("median_income", 1), 1)
 
-            result = self.score_application(test_features)
-            if result["decision"] == "toladi":
+            # Only the approve/reject boundary matters during search -- call
+            # predict_pd directly instead of the full score_application(),
+            # which would also build explain_decision()'s factor breakdown,
+            # translate() every feature name, and render reason/client_reasons
+            # text on all 30 iterations for output nothing here ever reads.
+            X = np.array([[test_features.get(f, 0) for f in self.feature_columns]], dtype=object)
+            score = int(self.pd_to_score(self.predict_pd(X))[0])
+            if score >= SCORE_THRESHOLD:
                 best_limit = mid
                 lo = mid + 1
             else:

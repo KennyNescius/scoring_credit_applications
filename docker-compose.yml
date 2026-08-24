@@ -1,12 +1,16 @@
-version: "3.8"
-
 services:
   credit-scoring:
     build: .
     ports:
       - "5000:5000"
-    volumes:
-      - ./natija:/app/natija
     environment:
       - FLASK_ENV=production
     restart: unless-stopped
+    # No natija/ bind mount: the running app never reads that file (it's a
+    # build-time-only artifact from scoring_engine.py's __main__). A mount
+    # here would shadow whatever docker-compose up --build just generated
+    # inside the image with whatever's still on the host -- exactly the
+    # wrong behavior on day 2, when the hidden dataset is swapped in and
+    # rebuilt: the fresh results would silently be replaced by the stale
+    # ones already on disk. `docker cp` the file out after `up` if you want
+    # a host copy of exactly what this run produced.
