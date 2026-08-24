@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{{ t('det.title') }} {{ app_info.application_id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-with-back">
+        <a href="{{ url_for('underwriter') }}" class="btn btn-secondary">{{ t('btn.back') }}</a>
+        <div>
+            <h1>{{ t('det.title') }} {{ app_info.application_id }}</h1>
+            <p class="subtitle">{{ app_info.ism }} — {{ app_info.viloyat }}</p>
+        </div>
+    </div>
+</div>
+
+<div class="detail-grid">
+    <!-- {{ t('uw.table.decision') }} -->
+    <div class="decision-card {{ 'approved' if result.decision == 'toladi' else 'rejected' }}" id="detail-decision">
+        <div class="decision-text">{{ result.decision_label }}</div>
+
+        <div class="score-display">
+            <div class="score-circle {{ 'score-good' if result.score >= 500 else ('score-medium' if result.score >= result.threshold else 'score-bad') }}">
+                <span class="score-number">{{ result.score }}</span>
+                <span class="score-label">{{ t('pts') }}</span>
+            </div>
+        </div>
+
+        <div class="score-bar-container">
+            <div class="score-bar">
+                <div class="score-bar-fill" style="width: {{ (result.score / 10)|int }}%"></div>
+                <div class="score-threshold" style="left: {{ (result.threshold / 10)|int }}%">
+                    <span class="threshold-label">{{ t('index.cards.threshold') }} {{ result.threshold }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-row">
+            <span class="detail-label">PD:</span>
+            <span class="detail-value">{{ (result.pd * 100)|round(2) }}%</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">{{ t('det.max_limit') }}</span>
+            <span class="detail-value">{{ max_limit }} {{ t('det.sum') }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">{{ t('det.actual') }}</span>
+            <span class="detail-value">
+                {% if app_info.actual != '—' and app_info.actual is not none %}
+                <span class="actual-badge {{ app_info.actual }}">{{ app_info.actual }}</span>
+                {% else %}
+                <span class="actual-badge unknown">{{ t('det.unknown') }}</span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">{{ t('index.cards.version') }}</span>
+            <span class="detail-value">{{ result.version }}</span>
+        </div>
+    </div>
+
+    <!-- {{ t('form.app_data') }} -->
+    <div class="info-card" id="detail-applicant">
+        <h3>{{ t('det.applicant') }}</h3>
+        <div class="info-grid">
+            <div class="info-item"><span class="info-label">{{ t('det.name') }}</span><span class="info-value">{{ app_info.ism }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.gender') }}:</span><span class="info-value">{{ app_info.jins }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.age') }}:</span><span class="info-value">{{ app_info.yosh }} {{ t('det.years') }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.region') }}:</span><span class="info-value">{{ app_info.viloyat }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.employment') }}</span><span class="info-value">{{ app_info.bandlik }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.edu') }}:</span><span class="info-value">{{ app_info.talim }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.exp') }}</span><span class="info-value">{{ app_info.ish_staji_oy }} {{ t('det.months') }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.income_decl') }}</span><span class="info-value">{{ app_info.deklaratsiya_daromad }} {{ t('det.sum') }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.family') }}</span><span class="info-value">{{ app_info.oila_azolari }} {{ t('det.people') }}</span></div>
+        </div>
+    </div>
+
+    <!-- Данные кредита -->
+    <div class="info-card" id="detail-loan">
+        <h3>{{ t('det.loan') }}</h3>
+        <div class="info-grid">
+            <div class="info-item"><span class="info-label">{{ t('uw.table.amount') }}:</span><span class="info-value">{{ app_info.sorlgan_summa }} {{ t('det.sum') }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.purpose') }}:</span><span class="info-value">{{ app_info.maqsad }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('det.term') }}</span><span class="info-value">{{ app_info.muddat_oy }} {{ t('det.months') }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.income_med') }}</span><span class="info-value">{{ app_info.median_income }} {{ t('det.sum') }}</span></div>
+            <div class="info-item"><span class="info-label">{{ t('f.income_cv') }}</span>
+                <span class="info-value {{ 'text-danger' if app_info.income_cv > 0.3 else ('text-warning' if app_info.income_cv > 0.15 else 'text-success') }}">
+                    {{ app_info.income_cv }}
+                </span>
+            </div>
+            <div class="info-item"><span class="info-label">DTI:</span>
+                <span class="info-value {{ 'text-danger' if app_info.dti > 0.5 else ('text-warning' if app_info.dti > 0.3 else 'text-success') }}">
+                    {{ app_info.dti }}
+                </span>
+            </div>
+            <div class="info-item"><span class="info-label">PTI:</span>
+                <span class="info-value {{ 'text-danger' if app_info.pti > 0.7 else ('text-warning' if app_info.pti > 0.4 else 'text-success') }}">
+                    {{ app_info.pti }}
+                </span>
+            </div>
+            <div class="info-item"><span class="info-label">{{ t('f.max_delinq') }}</span>
+                <span class="info-value {{ 'text-danger' if app_info.max_delinquency > 30 else ('text-warning' if app_info.max_delinquency > 0 else 'text-success') }}">
+                    {{ app_info.max_delinquency }} {{ t('det.days') }}
+                </span>
+            </div>
+            <div class="info-item"><span class="info-label">{{ t('det.loans_count') }}</span><span class="info-value">{{ app_info.loan_count|int }}</span></div>
+        </div>
+    </div>
+</div>
+
+{% if result.decision == 'defolt' and result.client_reasons %}
+<div class="info-card full-width" style="border-left: 4px solid var(--accent-orange); margin-bottom: 2rem;">
+    <h3 style="color: var(--accent-orange);">{{ t('det.reject_reasons') }}</h3>
+    <ul style="padding-left: 1.5rem; color: var(--text-primary); line-height: 1.8;">
+        {% for cr in result.client_reasons %}
+        <li>{{ cr }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- {{ t('det.factor.name') }}ы -->
+<div class="factors-card full-width" id="detail-factors">
+    <h3>{{ t('det.factors_breakdown') }}</h3>
+    <p class="reason-text">{{ result.reason }}</p>
+
+    <div class="factors-list factors-grid">
+        {% for factor in result.factors %}
+        <div class="factor-item {{ factor.direction }}">
+            <div class="factor-header">
+                <span class="factor-name">{{ factor.feature_name }}</span>
+                <span class="factor-points {{ 'positive' if factor.points > 0 else 'negative' }}">
+                    {{ '%+.0f'|format(factor.points) }} {{ t('pts2') }}
+                </span>
+            </div>
+            <div class="factor-detail">
+                {{ t('det.val') }} {{ factor.value }} | {{ t('f.edu.mid') }}: {{ factor.baseline }}
+            </div>
+            <div class="factor-bar">
+                {% if factor.points > 0 %}
+                <div class="factor-bar-pos" style="width: {{ [factor.points * 2, 100]|min }}%"></div>
+                {% else %}
+                <div class="factor-bar-neg" style="width: {{ [-factor.points * 2, 100]|min }}%"></div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Decision log (immutable) -->
+<div class="info-card full-width" id="decision-log">
+    <h3>{{ t('det.log') }}</h3>
+    <div class="log-entry">
+        <code>
+{
+  "application_id": "{{ app_info.application_id }}",
+  "timestamp": "{{ result.version }}",
+  "model_version": "{{ result.version }}",
+  "score": {{ result.score }},
+  "pd": {{ result.pd }},
+  "decision": "{{ result.decision }}",
+  "threshold": {{ result.threshold }},
+  "reason": "{{ result.reason }}",
+  "factors_count": {{ result.factors|length }}
+}
+        </code>
+    </div>
+</div>
+{% endblock %}

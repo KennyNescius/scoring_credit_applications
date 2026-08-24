@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav.apply') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ t('det.title') }} {{ t('form.on_loan') }}</h1>
+    <p class="subtitle">{{ t('form.desc') }}</p>
+</div>
+
+<div class="form-result-container">
+    <div class="form-section">
+        <form method="POST" action="{{ url_for('apply_form') }}" class="credit-form" id="application-form">
+            <div class="form-group-title">{{ t('form.app_data') }}</div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="yosh">{{ t('f.age') }}</label>
+                    <input type="number" id="yosh" name="yosh" value="{{ result.form_data.yosh if result and result.form_data else 30 }}" min="18" max="70" required>
+                </div>
+                <div class="form-group">
+                    <label for="bandlik">{{ t('erd.f2') }}</label>
+                    <select id="bandlik" name="bandlik" required>
+                        <option value="byudjet" {% if result and result.bandlik == 'byudjet' %}selected{% endif %}>{{ t("f.employment.gov") }}</option>
+                        <option value="IT" {% if result and result.bandlik == 'IT' %}selected{% endif %}>IT</option>
+                        <option value="savdo" {% if result and result.bandlik == 'savdo' %}selected{% endif %}>{{ t("f.employment.trade") }}</option>
+                        <option value="xususiy" {% if (not result) or (result and result.bandlik == 'xususiy') %}selected{% endif %}>{{ t("f.employment.priv") }}</option>
+                        <option value="qurilish" {% if result and result.bandlik == 'qurilish' %}selected{% endif %}>{{ t("f.employment.construct") }}</option>
+                        <option value="transport" {% if result and result.bandlik == 'transport' %}selected{% endif %}>{{ t("f.employment.trans") }}</option>
+                        <option value="o'z_ishi" {% if result and result.bandlik == "o'z_ishi" %}selected{% endif %}>{{ t('f.employment.self') }}</option>
+                        <option value="ishsiz" {% if result and result.bandlik == 'ishsiz' %}selected{% endif %}>{{ t("f.employment.unemp") }}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="ish_staji_oy">{{ t('f.exp') }}</label>
+                    <input type="number" id="ish_staji_oy" name="ish_staji_oy" value="{{ result.form_data.ish_staji_oy if result and result.form_data else 24 }}" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="talim">{{ t('f.edu') }}</label>
+                    <select id="talim" name="talim" required>
+                        <option value="oliy" {% if (not result) or (result and result.talim == 'oliy') %}selected{% endif %}>{{ t("f.edu.higher") }}</option>
+                        <option value="orta_maxsus" {% if result and result.talim == 'orta_maxsus' %}selected{% endif %}>{{ t('f.edu.mid') }} {{ t('f.edu.special') }}</option>
+                        <option value="orta" {% if result and result.talim == 'orta' %}selected{% endif %}>{{ t("f.edu.mid") }}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="deklaratsiya_daromad">{{ t('f.income_decl') }}</label>
+                    <input type="number" id="deklaratsiya_daromad" name="deklaratsiya_daromad" value="{{ result.form_data.deklaratsiya_daromad|int if result and result.form_data else 3000000 }}" min="0" step="100000" required>
+                </div>
+                <div class="form-group">
+                    <label for="oila_azolari">{{ t('f.family') }}</label>
+                    <input type="number" id="oila_azolari" name="oila_azolari" value="{{ result.form_data.oila_azolari if result and result.form_data else 3 }}" min="1" max="15" required>
+                </div>
+            </div>
+
+            <div class="form-group-title">{{ t('form.loan_params') }}</div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="sorlgan_summa">{{ t('uw.table.amount') }} {{ t('wi.amount_lbl') }}</label>
+                    <input type="number" id="sorlgan_summa" name="sorlgan_summa" value="{{ result.form_data.sorlgan_summa|int if result and result.form_data else 10000000 }}" min="100000" step="100000" required>
+                </div>
+                <div class="form-group">
+                    <label for="muddat_oy">{{ t('f.term') }}</label>
+                    <input type="number" id="muddat_oy" name="muddat_oy" value="{{ result.form_data.muddat_oy if result and result.form_data else 12 }}" min="1" max="120" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="maqsad">{{ t('f.purpose') }} {{ t('erd.loan_suffix') }}</label>
+                    <select id="maqsad" name="maqsad" required>
+                        <option value="ipoteka" {% if result and result.maqsad == 'ipoteka' %}selected{% endif %}>{{ t("f.purpose.mortgage") }}</option>
+                        <option value="avto" {% if result and result.maqsad == 'avto' %}selected{% endif %}>{{ t("f.purpose.auto") }}</option>
+                        <option value="iste'mol" {% if (not result) or (result and result.maqsad == "iste'mol") %}selected{% endif %}>{{ t("f.purpose.consum") }}</option>
+                        <option value="kredit_karta" {% if result and result.maqsad == 'kredit_karta' %}selected{% endif %}>{{ t("f.purpose.card") }}</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="mavjud_oylik_yuk">{{ t('f.curr_pay') }}</label>
+                    <input type="number" id="mavjud_oylik_yuk" name="mavjud_oylik_yuk" value="{{ result.form_data.mavjud_oylik_yuk|int if result and result.form_data else 0 }}" min="0" step="10000">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="mijoz_boldi_oy">{{ t('uw.table.client') }} {{ t('form.client_months') }}</label>
+                    <input type="number" id="mijoz_boldi_oy" name="mijoz_boldi_oy" value="{{ result.form_data.mijoz_boldi_oy if result and result.form_data else 12 }}" min="0">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block btn-lg" id="submit-application">
+                {{ t('form.submit3') }}
+            </button>
+        </form>
+    </div>
+
+    {% if result and not result.error %}
+    <div class="result-section">
+        <div class="decision-card {{ 'approved' if result.decision == 'toladi' else 'rejected' }}" id="decision-result">
+            <div class="decision-text">
+                {{ result.decision_label }}
+            </div>
+            <div class="score-display">
+                <div class="score-circle {{ 'score-good' if result.score >= 500 else ('score-medium' if result.score >= 400 else 'score-bad') }}">
+                    <span class="score-number">{{ result.score }}</span>
+                    <span class="score-label">{{ t('pts') }}</span>
+                </div>
+            </div>
+            <div class="score-bar-container">
+                <div class="score-bar">
+                    <div class="score-bar-fill" style="width: {{ (result.score / 10)|int }}%"></div>
+                    <div class="score-threshold" style="left: {{ (result.threshold / 10)|int }}%">
+                        <span class="threshold-label">{{ t('index.cards.threshold') }} {{ result.threshold }}</span>
+                    </div>
+                </div>
+                <div class="score-bar-labels">
+                    <span>0</span>
+                    <span>{{ t('form.high_risk') }}</span>
+                    <span>{{ t('form.low_risk') }}</span>
+                    <span>1000</span>
+                </div>
+            </div>
+
+            <div class="detail-row">
+                <span class="detail-label">{{ t('det.pd_label') }}</span>
+                <span class="detail-value">{{ (result.pd * 100)|round(2) }}%</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">{{ t('det.max_limit') }}</span>
+                <span class="detail-value">{{ result.max_limit }} {{ t('det.sum') }}</span>
+            </div>
+        </div>
+
+        <div class="factors-card" id="factors-breakdown">
+            <h3>{{ t('det.factors_breakdown') }}</h3>
+            <p class="reason-text">{{ result.reason }}</p>
+
+            <div class="factors-list">
+                {% for factor in result.factors[:8] %}
+                <div class="factor-item {{ factor.direction }}" id="factor-{{ loop.index }}">
+                    <div class="factor-header">
+                        <span class="factor-name">{{ factor.feature_name }}</span>
+                        <span class="factor-points {{ 'positive' if factor.points > 0 else 'negative' }}">
+                            {{ '%+.0f'|format(factor.points) }} {{ t('pts2') }}
+                        </span>
+                    </div>
+                    <div class="factor-detail">
+                        {{ t('det.val') }} {{ factor.value }} {{ t('wi.factor_val') }} {{ factor.baseline }})
+                    </div>
+                    <div class="factor-bar">
+                        {% if factor.points > 0 %}
+                        <div class="factor-bar-pos" style="width: {{ [factor.points * 2, 100]|min }}%"></div>
+                        {% else %}
+                        <div class="factor-bar-neg" style="width: {{ [-factor.points * 2, 100]|min }}%"></div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% elif result and result.error %}
+    <div class="result-section">
+        <div class="error-card">
+            <h3>{{ t('form.error') }}</h3>
+            <p>{{ result.error }}</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

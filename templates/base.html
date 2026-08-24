@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ t('nav.brand') }}{% endblock %} | CBU Hackathon 2026</title>
+    <meta name="description" content="Credit scoring and limit engine — CBU Coding Hackathon 2026">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .lang-switch {
+            display: inline-flex;
+            gap: 4px;
+            margin-left: 1rem;
+            background: var(--bg-hover);
+            padding: 4px;
+            border-radius: 8px;
+        }
+        .lang-btn {
+            text-decoration: none;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .lang-btn.active {
+            background: white;
+            color: var(--text-primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar" id="main-nav">
+        <div class="nav-brand">
+            <span class="nav-title">{{ t('nav.brand') }}</span>
+            <span class="nav-badge">CBU Hackathon</span>
+        </div>
+        <div class="nav-links">
+            <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">{{ t('nav.overview') }}</a>
+            <a href="{{ url_for('apply_form') }}" class="nav-link {% if request.endpoint == 'apply_form' %}active{% endif %}">{{ t('nav.apply') }}</a>
+            <a href="{{ url_for('underwriter') }}" class="nav-link {% if request.endpoint in ['underwriter', 'application_detail'] %}active{% endif %}">{{ t('nav.underwriter') }}</a>
+            <a href="{{ url_for('whatif') }}" class="nav-link {% if request.endpoint == 'whatif' %}active{% endif %}">{{ t('nav.whatif') }}</a>
+            <a href="{{ url_for('model_info') }}" class="nav-link {% if request.endpoint == 'model_info' %}active{% endif %}">{{ t('nav.model') }}</a>
+            <a href="{{ url_for('erd_diagram') }}" class="nav-link {% if request.endpoint == 'erd_diagram' %}active{% endif %}">{{ t('nav.erd') }}</a>
+            
+            <div class="lang-switch">
+                <a href="{{ url_for('set_lang', lang='ru') }}" class="lang-btn {% if current_lang == 'ru' %}active{% endif %}">Ru</a>
+                <a href="{{ url_for('set_lang', lang='uz') }}" class="lang-btn {% if current_lang == 'uz' %}active{% endif %}">O'z</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>{{ t('footer.text') }}</p>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

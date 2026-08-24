@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav.overview') }}{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.charts-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+.charts-row.reasons {
+    grid-template-columns: 1fr;
+}
+.chart-container {
+    position: relative;
+    height: 300px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>WindAI Scoring</h1>
+    <p class="subtitle">{{ t('index.title') }}</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card stat-blue" id="stat-total">
+        <div class="stat-value">{{ stats.total_applications }}</div>
+        <div class="stat-label">{{ t('index.stats.total') }}</div>
+    </div>
+    <div class="stat-card stat-green" id="stat-train">
+        <div class="stat-value">{{ stats.train_count }}</div>
+        <div class="stat-label">{{ t('index.stats.train') }}</div>
+    </div>
+    <div class="stat-card stat-orange" id="stat-test">
+        <div class="stat-value">{{ stats.test_count }}</div>
+        <div class="stat-label">{{ t('index.stats.test') }}</div>
+    </div>
+    <div class="stat-card stat-red" id="stat-default">
+        <div class="stat-value">{{ stats.default_rate }}</div>
+        <div class="stat-label">{{ t('index.stats.default_rate') }}</div>
+    </div>
+</div>
+
+<div class="charts-row">
+    <div class="info-card">
+        <h3>{{ t('index.charts.status') }}</h3>
+        <div class="chart-container" style="height: 250px;">
+            <canvas id="approvalChart"></canvas>
+        </div>
+    </div>
+    <div class="info-card">
+        <h3>{{ t('index.charts.scores') }}</h3>
+        <div class="chart-container" style="height: 250px;">
+            <canvas id="scoresChart"></canvas>
+        </div>
+    </div>
+</div>
+<div class="charts-row reasons">
+    <div class="info-card">
+        <h3>{{ t('index.charts.reasons') }}</h3>
+        <div class="chart-container" style="height: 250px;">
+            <canvas id="reasonsChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="cards-row">
+    <div class="info-card" id="card-model">
+        <h3>{{ t('index.cards.model') }}</h3>
+        <div class="info-item">
+            <span class="info-label">{{ t('index.cards.version') }}</span>
+            <span class="info-value">{{ stats.model_version }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('index.cards.date') }}</span>
+            <span class="info-value">{{ stats.model_date }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('index.cards.threshold') }}</span>
+            <span class="info-value">{{ stats.threshold }}</span>
+        </div>
+        <a href="{{ url_for('model_info') }}" class="btn btn-secondary">{{ t('index.cards.more') }}</a>
+    </div>
+
+    <div class="info-card" id="card-actions">
+        <h3>{{ t('index.cards.actions') }}</h3>
+        <a href="{{ url_for('apply_form') }}" class="btn btn-primary btn-block">{{ t('index.cards.action.apply') }}</a>
+        <a href="{{ url_for('underwriter') }}" class="btn btn-secondary btn-block">{{ t('index.cards.action.underwriter') }}</a>
+        <a href="{{ url_for('whatif') }}" class="btn btn-secondary btn-block">{{ t('index.cards.action.whatif') }}</a>
+    </div>
+
+    <div class="info-card" id="card-algorithms">
+        <h3>{{ t('index.cards.algo') }}</h3>
+        <div class="algo-list">
+            <div class="algo-item done">{{ t('index.cards.algo.dti') }}</div>
+            <div class="algo-item done">{{ t('index.cards.algo.cv') }}</div>
+            <div class="algo-item done">{{ t('index.cards.algo.woe') }}</div>
+            <div class="algo-item done">{{ t('index.cards.algo.logreg') }}</div>
+            <div class="algo-item done">{{ t('index.cards.algo.binary') }}</div>
+            <div class="algo-item done">{{ t('index.cards.algo.factors') }}</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const rawData = {{ chart_data|safe }};
+    Chart.defaults.color = "#9CA3AF";
+    Chart.defaults.font.family = "'Inter', sans-serif";
+
+    // 1. Approval Chart (Doughnut)
+    new Chart(document.getElementById('approvalChart'), {
+        type: 'doughnut',
+        data: {
+            labels: rawData.approval.labels,
+            datasets: [{
+                data: rawData.approval.data,
+                backgroundColor: ['#5c7f66', '#B15E5E'],
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' }
+            },
+            cutout: '70%'
+        }
+    });
+
+    // 2. Scores Distribution Chart
+    new Chart(document.getElementById('scoresChart'), {
+        type: 'bar',
+        data: {
+            labels: rawData.scores.labels,
+            datasets: [{
+                label: '{{ t("index.charts.scores_label") }}',
+                data: rawData.scores.data,
+                backgroundColor: '#D97757',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { grid: { color: '#374151', drawBorder: false }, beginAtZero: true },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    // 3. Reasons Chart
+    new Chart(document.getElementById('reasonsChart'), {
+        type: 'bar',
+        data: {
+            labels: rawData.reasons.labels.map(l => l.length > 20 ? l.substring(0,20)+'...' : l),
+            datasets: [{
+                label: '{{ t("index.charts.reason_label") }}',
+                data: rawData.reasons.data,
+                backgroundColor: '#575550',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: { grid: { color: '#374151', drawBorder: false }, beginAtZero: true },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}{{ t('erd.head_title') }}{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+    mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    
+    let currentZoom = 1;
+    function zoomErd(delta) {
+        currentZoom += delta;
+        if (currentZoom < 0.3) currentZoom = 0.3;
+        if (currentZoom > 3) currentZoom = 3;
+        document.getElementById('erd-wrapper').style.transform = `scale(${currentZoom})`;
+    }
+</script>
+<style>
+    .erd-container {
+        position: relative;
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        margin: 2rem 0;
+        overflow: auto;
+        min-height: 400px;
+    }
+    
+    .zoom-controls {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        display: flex;
+        gap: 0.5rem;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 0.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .zoom-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 1px solid var(--border-color);
+        background: white;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-primary);
+    }
+    
+    .zoom-btn:hover {
+        background: var(--bg-hover);
+    }
+
+    #erd-wrapper {
+        transform-origin: top left;
+        transition: transform 0.2s ease;
+        padding-bottom: 50px;
+    }
+
+    .data-dictionary {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+    }
+    .data-dictionary th, .data-dictionary td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        text-align: left;
+    }
+    .data-dictionary th {
+        background-color: var(--bg-hover);
+        color: var(--text-secondary);
+        font-weight: 500;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+    }
+    .impact-high-red { color: #B15E5E; font-weight: 600; }
+    .impact-high-green { color: #5c7f66; font-weight: 600; }
+    .impact-medium { color: var(--accent-orange); font-weight: 500; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ t('erd.title2') }}</h1>
+    <p class="subtitle">{{ t('erd.desc2') }}</p>
+</div>
+
+<div class="info-card full-width">
+    <div class="erd-container">
+        <div class="zoom-controls">
+            <button class="zoom-btn" onclick="zoomErd(0.2)" title="{{ t('erd.btn.zoom_in') }}">+</button>
+            <button class="zoom-btn" onclick="zoomErd(-0.2)" title="{{ t('erd.btn.zoom_out') }}">-</button>
+            <button class="zoom-btn" onclick="currentZoom = 1; zoomErd(0);" title="{{ t('erd.btn.reset') }}">↺</button>
+        </div>
+        <div id="erd-wrapper">
+            <div class="mermaid">
+    erDiagram
+        APPLICANTS {
+            string applicant_id PK
+            string ism "{{ t('erd.f1') }}"
+            int yosh "{{ t('f.age') }}"
+            string jins "{{ t('f.gender') }}"
+            string viloyat "{{ t('f.region') }}"
+            string bandlik "{{ t('erd.f2') }}"
+            string talim "{{ t('f.edu') }}"
+            int ish_staji_oy "{{ t('erd.f3') }}"
+            int deklaratsiya_daromad "{{ t('erd.f4') }}"
+            int oila_azolari "{{ t('f.family') }}"
+            int mijoz_boldi_oy "{{ t('erd.f5') }}"
+        }
+
+        APPLICATIONS {
+            string application_id PK
+            string applicant_id FK
+            int sorlgan_summa "{{ t('erd.f6') }}"
+            string maqsad "{{ t('f.purpose') }} {{ t('erd.loan_suffix') }}"
+            int muddat_oy "{{ t('erd.term') }}"
+            int mavjud_oylik_yuk "{{ t('erd.f7') }}"
+            string natija "{{ t('erd.f8') }}"
+        }
+
+        EXISTING_LOANS {
+            string loan_id PK
+            string applicant_id FK
+            int qoldiq "{{ t('erd.f9') }}"
+            int oylik_tolov "{{ t('erd.f10') }}"
+            int max_kechikish_kun "{{ t('erd.f11') }}"
+        }
+
+        MONTHLY_FLOWS {
+            string applicant_id FK "Composite Key"
+            string oy FK "{{ t('erd.f12') }}"
+            int kirim "{{ t('erd.f13') }}"
+            int chiqim "{{ t('erd.f14') }}"
+            int naqd_yechish "{{ t('erd.f15') }}"
+            int oy_oxiri_qoldiq "{{ t('erd.f16') }}"
+        }
+
+        APPLICANTS ||--o{ APPLICATIONS : "submits"
+        APPLICANTS ||--o{ EXISTING_LOANS : "has"
+        APPLICANTS ||--o{ MONTHLY_FLOWS : "generates"
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="info-card full-width" style="margin-top: 2rem;">
+    <h3>{{ t("erd.dict.title") }}</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+        {{ t("erd.dict.desc") }}
+    </p>
+
+    <div style="overflow-x: auto;">
+        <table class="data-dictionary">
+            <thead>
+                <tr>
+                    <th>{{ t("erd.col.fact") }}</th>
+                    <th>{{ t("erd.col.form") }}</th>
+                    <th>{{ t("erd.col.weight") }}</th>
+                    <th>{{ t("erd.col.desc") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><b>PTI</b> (Payment-to-Income)</td>
+                    <td><code>(mavjud_oylik_yuk + open_loans_payment + <br>new_loan_payment) / median_income</code></td>
+                    <td><span class="impact-high-red">{{ t('erd.lvl.crit') }} (IV: 0.55)</span></td>
+                    <td>{{ t('erd.lbl.rel1') }} <br><b>{{ t('erd.lbl.infl') }}</b> {{ t('erd.lbl.rel2') }}</td>
+                </tr>
+                <tr>
+                    <td><b>DTI</b> (Debt-to-Income)</td>
+                    <td><code>(mavjud_oylik_yuk + open_loans_payment) / median_income</code></td>
+                    <td><span class="impact-high-red">{{ t('erd.lvl.high') }} (IV: 0.42)</span></td>
+                    <td>{{ t('erd.lbl.rel3') }} <br><b>{{ t('erd.lbl.infl') }}</b> {{ t('erd.lbl.rel4') }}</td>
+                </tr>
+                <tr>
+                    <td><b>{{ t('erd.median_inc') }}</b> (median_income)</td>
+                    <td><code>Median( MONTHLY_FLOWS.kirim - MONTHLY_FLOWS.chiqim )</code> {{ t('erd.for_12_mo') }}</td>
+                    <td><span class="impact-high-green">{{ t('erd.lvl.high') }}</span></td>
+                    <td>{{ t('erd.lbl.med1') }} <code>deklaratsiya_daromad</code> {{ t('erd.lbl.med2') }} <br><b>{{ t('erd.lbl.infl') }}</b> {{ t('erd.lbl.med3') }}</td>
+                </tr>
+                <tr>
+                    <td><b>{{ t('erd.inc_unstab') }}</b> (CV)</td>
+                    <td><code>StdDev(Income) / Mean(Income)</code></td>
+                    <td><span class="impact-medium">{{ t('erd.lvl.mid') }} (IV: 0.03)</span></td>
+                    <td>{{ t('model.table.coef') }} {{ t('erd.cv_desc_p1') }}<br><b>{{ t('erd.lbl.infl') }}</b> {{ t('uw.table.client') }}{{ t('erd.cv_desc_p2') }}</td>
+                </tr>
+                <tr>
+                    <td><b>{{ t('f.employment') }}</b> (bandlik)</td>
+                    <td><code>APPLICANTS.bandlik</code> -> Target Encoding</td>
+                    <td><span class="impact-high-green">{{ t('erd.lvl.high') }}</span></td>
+                    <td>{{ t('erd.lbl.emp1') }}<br><b>{{ t('erd.lbl.infl') }}</b> {{ t('erd.emp_desc') }}</td>
+                </tr>
+                <tr>
+                    <td><b>{{ t('erd.f11') }}</b></td>
+                    <td><code>Max(EXISTING_LOANS.max_kechikish_kun)</code></td>
+                    <td><span class="impact-medium">{{ t('erd.lvl.mid') }} (IV: 0.04)</span></td>
+                    <td>{{ t('erd.lbl.del1') }} <br><b>{{ t('erd.lbl.infl') }}</b> {{ t('erd.lbl.del2') }}</td>
+                </tr>
+                <tr>
+                    <td><b>{{ t('uw.table.amount') }}/{{ t('erd.inc') }}</b></td>
+                    <td><code>sorlgan_summa / median_income</code></td>
+                    <td><span class="impact-medium">{{ t('erd.lvl.mid') }} (IV: 0.19)</span></td>
+                    <td>{{ t('erd.lbl.lti1') }}<br><b>{{ t('erd.lbl.infl') }}</b> {{ t('erd.lbl.lti2') }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

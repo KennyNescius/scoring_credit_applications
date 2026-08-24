@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}{{ t('wi.title') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ t('wi.title') }}</h1>
+    <p class="subtitle">{{ t('wi.subtitle') }}</p>
+</div>
+
+<div class="whatif-container">
+    <div class="whatif-controls" id="whatif-form">
+        <div class="form-group-title">{{ t('det.applicant') }}</div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="wi-age">{{ t('f.age') }}</label>
+                <input type="range" id="wi-age" min="18" max="70" value="30" oninput="updateWhatif()">
+                <span class="range-value" id="wi-age-val">30</span>
+            </div>
+            <div class="form-group">
+                <label for="wi-experience">{{ t('wi.exp') }}</label>
+                <input type="range" id="wi-experience" min="0" max="300" value="24" oninput="updateWhatif()">
+                <span class="range-value" id="wi-experience-val">24</span>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="wi-employment">{{ t('erd.f2') }}</label>
+                <select id="wi-employment" onchange="updateWhatif()">
+                    <option value="byudjet">{{ t("f.employment.gov") }}</option>
+                    <option value="IT">IT</option>
+                    <option value="savdo">{{ t("f.employment.trade") }}</option>
+                    <option value="xususiy" selected>{{ t('wi.priv') }}</option>
+                    <option value="qurilish">{{ t("f.employment.construct") }}</option>
+                    <option value="transport">{{ t("f.employment.trans") }}</option>
+                    <option value="o'z_ishi">{{ t('f.employment.self') }}</option>
+                    <option value="ishsiz">{{ t("f.employment.unemp") }}</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="wi-education">{{ t('f.edu') }}</label>
+                <select id="wi-education" onchange="updateWhatif()">
+                    <option value="oliy" selected>{{ t("f.edu.higher") }}</option>
+                    <option value="orta_maxsus">{{ t('f.edu.mid') }} {{ t('wi.spec') }}</option>
+                    <option value="orta">{{ t("f.edu.mid") }}</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group-title">{{ t('wi.finances') }}</div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="wi-income">{{ t('f.income_decl') }}</label>
+                <input type="range" id="wi-income" min="500000" max="20000000" value="3000000" step="100000" oninput="updateWhatif()">
+                <span class="range-value" id="wi-income-val">3,000,000</span>
+            </div>
+            <div class="form-group">
+                <label for="wi-amount">{{ t('uw.table.amount') }} {{ t('wi.amount_lbl') }}</label>
+                <input type="range" id="wi-amount" min="500000" max="50000000" value="10000000" step="100000" oninput="updateWhatif()">
+                <span class="range-value" id="wi-amount-val">10,000,000</span>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="wi-term">{{ t('f.term') }}</label>
+                <input type="range" id="wi-term" min="3" max="120" value="12" oninput="updateWhatif()">
+                <span class="range-value" id="wi-term-val">12</span>
+            </div>
+            <div class="form-group">
+                <label for="wi-existing">{{ t('wi.curr_pay') }}</label>
+                <input type="range" id="wi-existing" min="0" max="5000000" value="0" step="50000" oninput="updateWhatif()">
+                <span class="range-value" id="wi-existing-val">0</span>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="wi-purpose">{{ t('f.purpose') }}</label>
+                <select id="wi-purpose" onchange="updateWhatif()">
+                    <option value="ipoteka">{{ t("f.purpose.mortgage") }}</option>
+                    <option value="avto">{{ t("f.purpose.auto") }}</option>
+                    <option value="iste'mol" selected>{{ t("f.purpose.consum") }}</option>
+                    <option value="kredit_karta">{{ t("f.purpose.card") }}</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="wi-family">{{ t('wi.family') }}</label>
+                <input type="range" id="wi-family" min="1" max="10" value="3" oninput="updateWhatif()">
+                <span class="range-value" id="wi-family-val">3</span>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="wi-delinquency">{{ t('erd.f11') }} {{ t('wi.days_lbl') }}</label>
+                <input type="range" id="wi-delinquency" min="0" max="180" value="0" oninput="updateWhatif()">
+                <span class="range-value" id="wi-delinquency-val">0</span>
+            </div>
+            <div class="form-group">
+                <label for="wi-loans">{{ t('wi.loans_cnt') }}</label>
+                <input type="range" id="wi-loans" min="0" max="10" value="0" oninput="updateWhatif()">
+                <span class="range-value" id="wi-loans-val">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="whatif-result" id="whatif-result">
+        <div class="whatif-loading" id="whatif-loading">
+            <div class="spinner"></div>
+            <p>{{ t('wi.calc') }}</p>
+        </div>
+
+        <div id="whatif-content" style="display: none;">
+            <div class="decision-card" id="wi-decision-card">
+                <div class="decision-icon" id="wi-icon"></div>
+                <div class="decision-text" id="wi-decision-text"></div>
+                <div class="score-display">
+                    <div class="score-circle" id="wi-score-circle">
+                        <span class="score-number" id="wi-score">—</span>
+                        <span class="score-label">{{ t('pts') }}</span>
+                    </div>
+                </div>
+                <div class="score-bar-container">
+                    <div class="score-bar">
+                        <div class="score-bar-fill" id="wi-score-bar"></div>
+                        <div class="score-threshold" id="wi-threshold-mark">
+                            <span class="threshold-label" id="wi-threshold-label"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">PD:</span>
+                    <span class="detail-value" id="wi-pd">—</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">{{ t('det.max_limit') }}</span>
+                    <span class="detail-value" id="wi-limit">—</span>
+                </div>
+            </div>
+
+            <div class="factors-card" id="wi-factors-card">
+                <h3>{{ t('det.factor.name') }}{{ t('wi.factors_pl') }}</h3>
+                <p class="reason-text" id="wi-reason"></p>
+                <div class="factors-list" id="wi-factors"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let debounceTimer;
+
+function formatNumber(n) {
+    return Number(n).toLocaleString('ru-RU');
+}
+
+function updateLabels() {
+    document.getElementById('wi-age-val').textContent = document.getElementById('wi-age').value;
+    document.getElementById('wi-experience-val').textContent = document.getElementById('wi-experience').value;
+    document.getElementById('wi-income-val').textContent = formatNumber(document.getElementById('wi-income').value);
+    document.getElementById('wi-amount-val').textContent = formatNumber(document.getElementById('wi-amount').value);
+    document.getElementById('wi-term-val').textContent = document.getElementById('wi-term').value;
+    document.getElementById('wi-existing-val').textContent = formatNumber(document.getElementById('wi-existing').value);
+    document.getElementById('wi-family-val').textContent = document.getElementById('wi-family').value;
+    document.getElementById('wi-delinquency-val').textContent = document.getElementById('wi-delinquency').value;
+    document.getElementById('wi-loans-val').textContent = document.getElementById('wi-loans').value;
+}
+
+function updateWhatif() {
+    updateLabels();
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(fetchScore, 300);
+}
+
+async function fetchScore() {
+    document.getElementById('whatif-loading').style.display = 'flex';
+    document.getElementById('whatif-content').style.display = 'none';
+
+    const data = {
+        age: parseInt(document.getElementById('wi-age').value),
+        experience: parseInt(document.getElementById('wi-experience').value),
+        employment: document.getElementById('wi-employment').value,
+        education: document.getElementById('wi-education').value,
+        income: parseFloat(document.getElementById('wi-income').value),
+        amount: parseFloat(document.getElementById('wi-amount').value),
+        term: parseInt(document.getElementById('wi-term').value),
+        existing_payments: parseFloat(document.getElementById('wi-existing').value),
+        purpose: document.getElementById('wi-purpose').value,
+        family: parseInt(document.getElementById('wi-family').value),
+        client_months: 12,
+        max_delinquency: parseInt(document.getElementById('wi-delinquency').value),
+        loan_count: parseInt(document.getElementById('wi-loans').value),
+        income_cv: 0.15,
+    };
+
+    try {
+        const resp = await fetch('/api/whatif', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        const result = await resp.json();
+        renderResult(result);
+    } catch (e) {
+        console.error('Error:', e);
+    }
+}
+
+function renderResult(r) {
+    document.getElementById('whatif-loading').style.display = 'none';
+    document.getElementById('whatif-content').style.display = 'block';
+
+    const card = document.getElementById('wi-decision-card');
+    card.className = 'decision-card ' + (r.decision === 'toladi' ? 'approved' : 'rejected');
+
+    document.getElementById('wi-icon').style.display = 'none';
+    document.getElementById('wi-decision-text').textContent = r.decision_label;
+
+    const circle = document.getElementById('wi-score-circle');
+    circle.className = 'score-circle ' + (r.score >= 500 ? 'score-good' : (r.score >= r.threshold ? 'score-medium' : 'score-bad'));
+    document.getElementById('wi-score').textContent = r.score;
+
+    document.getElementById('wi-score-bar').style.width = Math.min(r.score / 10, 100) + '%';
+    document.getElementById('wi-threshold-mark').style.left = (r.threshold / 10) + '%';
+    document.getElementById('wi-threshold-label').textContent = '{{ t('index.cards.threshold') }} ' + r.threshold;
+
+    document.getElementById('wi-pd').textContent = (r.pd * 100).toFixed(2) + '%';
+    document.getElementById('wi-limit').textContent = formatNumber(r.max_limit) + ' {{ t('det.sum') }}';
+    document.getElementById('wi-reason').textContent = r.reason;
+
+    const factorsEl = document.getElementById('wi-factors');
+    factorsEl.innerHTML = '';
+    (r.factors || []).slice(0, 8).forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'factor-item ' + f.direction;
+        const barWidth = Math.min(Math.abs(f.points) * 2, 100);
+        const barClass = f.points > 0 ? 'factor-bar-pos' : 'factor-bar-neg';
+        div.innerHTML = `
+            <div class="factor-header">
+                <span class="factor-name">${f.feature_name}</span>
+                <span class="factor-points ${f.points > 0 ? 'positive' : 'negative'}">
+                    ${f.points > 0 ? '+' : ''}${Math.round(f.points)} {{ t('pts2') }}
+                </span>
+            </div>
+            <div class="factor-detail">{{ t('det.val') }} ${f.value} {{ t('wi.factor_val') }} ${f.baseline})</div>
+            <div class="factor-bar"><div class="${barClass}" style="width: ${barWidth}%"></div></div>
+        `;
+        factorsEl.appendChild(div);
+    });
+}
+
+// Первый запрос
+updateWhatif();
+</script>
+{% endblock %}

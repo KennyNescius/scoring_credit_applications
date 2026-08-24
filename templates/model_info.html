@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}{{ t('model.info.title') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ t("model.info.title") }}</h1>
+    <p class="subtitle">Scorecard {{ info.version }} {{ t('model.subtitle') }}</p>
+</div>
+
+<div class="cards-row">
+    <div class="info-card" id="model-params">
+        <h3>{{ t('model.params2') }}</h3>
+        <div class="info-item">
+            <span class="info-label">{{ t('index.cards.version') }}</span>
+            <span class="info-value">{{ info.version }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('index.cards.date') }}</span>
+            <span class="info-value">{{ info.version_date }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.f_count') }}</span>
+            <span class="info-value">{{ info.n_features }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.log_int') }}</span>
+            <span class="info-value">{{ info.intercept }}</span>
+        </div>
+        
+        <h4 style="margin-top: 15px; margin-bottom: 5px; font-weight: 500; color: var(--text-secondary);">{{ t('model.params') }} {{ t('model.calib') }}</h4>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.base_score') }}</span>
+            <span class="info-value">{{ info.base_score }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.base_odds') }}</span>
+            <span class="info-value">{{ info.base_odds }}:1</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">PDO ({{ t('det.factor.pts') }} {{ t('model.pdo') }}</span>
+            <span class="info-value">{{ info.pdo }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.factor') }}</span>
+            <span class="info-value">{{ info.factor }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.offset') }}:</span>
+            <span class="info-value">{{ info.offset }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">{{ t('model.threshold') }}</span>
+            <span class="info-value" style="font-weight: 600; color: var(--accent-orange)">{{ info.threshold }} {{ t('pts') }}</span>
+        </div>
+    </div>
+
+    <div class="info-card" id="model-coefficients" style="max-height: 500px; overflow-y: auto;">
+        <h3>{{ t('model.all_coefs') }} ({{ info.n_features }})</h3>
+        <p class="card-description">{{ t('model.sorted_desc') }}</p>
+        <table class="data-table compact">
+            <thead style="position: sticky; top: 0; background: var(--bg-card); z-index: 10;">
+                <tr>
+                    <th>{{ t('model.f_mean') }}</th>
+                    <th>{{ t("model.table.coef") }}</th>
+                    <th>{{ t('model.impact_abs') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in info.all_coefficients %}
+                <tr>
+                    <td>
+                        {{ c.feature }}
+                        <div style="font-size: 11px; color: var(--text-muted);">Baseline: {{ info.feature_means[c.feature] }}</div>
+                    </td>
+                    <td class="mono" style="color: {% if c.coefficient > 0 %}var(--accent-red){% else %}var(--accent-green){% endif %}">
+                        {{ '%+.4f'|format(c.coefficient) }}
+                    </td>
+                    <td>
+                        <div class="coef-bar">
+                            {% set w = (c.coefficient|abs * 100)|int %}
+                            {% if c.coefficient > 0 %}
+                            <div class="coef-bar-neg" style="width: {{ [w, 100]|min }}%"></div>
+                            {% else %}
+                            <div class="coef-bar-pos" style="width: {{ [w, 100]|min }}%"></div>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if info.iv_values %}
+<div class="info-card full-width" id="model-iv">
+    <h3>Information Value (IV)</h3>
+    <p class="card-description">
+        {{ t('model.iv_desc') }}
+    </p>
+    <div class="iv-grid">
+        {% for feat, iv in info.iv_values.items() %}
+        <div class="iv-item">
+            <div class="iv-header">
+                <span class="iv-name">{{ feat }}</span>
+                <span class="iv-value {{ 'iv-strong' if iv > 0.3 else ('iv-medium' if iv > 0.1 else ('iv-weak' if iv > 0.02 else 'iv-none')) }}">
+                    {{ iv }}
+                </span>
+            </div>
+            <div class="iv-bar">
+                <div class="iv-bar-fill {{ 'iv-strong' if iv > 0.3 else ('iv-medium' if iv > 0.1 else ('iv-weak' if iv > 0.02 else 'iv-none')) }}"
+                     style="width: {{ [iv * 200, 100]|min }}%"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="info-card full-width" id="model-algorithms">
+    <h3>{{ t('model.algos') }}</h3>
+    <div class="algo-detail-grid">
+        <div class="algo-detail-card">
+            <h4>{{ t('model.algo1') }}</h4>
+            <p><strong>DTI</strong> = ({{ t('model.algo1_desc1') }}</p>
+            <p><strong>PTI</strong> = ({{ t('model.algo1_desc2') }}</p>
+            <p>{{ t('model.algo1_desc3') }}</p>
+        </div>
+        <div class="algo-detail-card">
+            <h4>{{ t('model.algo2') }}</h4>
+            <p><strong>CV</strong> = std(monthly_income) / mean(monthly_income)</p>
+            <p>{{ t('model.algo2_desc1') }}</p>
+            <p>{{ t('model.algo2_desc3') }}</p>
+        </div>
+        <div class="algo-detail-card">
+            <h4>{{ t('index.cards.algo.woe') }} {{ t('model.bonus') }}</h4>
+            <p>{{ t('model.algo3_desc1') }}</p>
+            <p>{{ t('model.algo3_desc2') }}</p>
+        </div>
+        <div class="algo-detail-card">
+            <h4>{{ t('index.cards.algo.logreg') }} {{ t('model.bonus') }}</h4>
+            <p>{{ t('model.algo4_desc1') }}</p>
+            <p>{{ t('model.table.coef') }}{{ t('model.algo4_desc2') }}</p>
+        </div>
+        <div class="algo-detail-card">
+            <h4>{{ t('index.cards.algo.binary') }} {{ t('model.bonus') }}</h4>
+            <p>{{ t('model.algo5_desc1') }}</p>
+            <p>{{ t('model.algo5_desc3') }}</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
